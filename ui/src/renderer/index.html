@@ -748,7 +748,7 @@
       #screen-models {
         flex-direction: column;
         padding: 24px;
-        overflow: hidden;
+        overflow-y: auto;
       }
       #screen-models.active {
         display: flex;
@@ -886,6 +886,130 @@
         display: flex;
         flex-direction: column;
         gap: 12px;
+      }
+
+      /* ── Model catalog ──────────────────────────────────────────── */
+      .catalog-section {
+        background: var(--bg2);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 18px 20px;
+      }
+      .catalog-header {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        margin-bottom: 14px;
+      }
+      .catalog-header h3 {
+        font-size: 14px;
+        font-weight: 600;
+      }
+      .catalog-controls {
+        display: flex;
+        gap: 14px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .catalog-badge {
+        font-size: 11px;
+        padding: 4px 10px;
+        background: var(--bg3);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        color: var(--text2);
+      }
+      .catalog-badge.ok {
+        color: var(--success);
+        border-color: var(--success);
+      }
+      #catalog-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 12px;
+      }
+      .catalog-card {
+        background: var(--bg0);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 14px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        transition: border-color 0.15s, transform 0.15s;
+      }
+      .catalog-card:hover {
+        border-color: var(--accent);
+      }
+      .catalog-card.installed {
+        border-color: var(--success);
+      }
+      .catalog-card.too-big {
+        opacity: 0.55;
+      }
+      .catalog-card .cc-name {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--text);
+      }
+      .catalog-card .cc-repo {
+        font-size: 10px;
+        color: var(--text3);
+        font-family: "Courier New", monospace;
+        word-break: break-all;
+      }
+      .catalog-card .cc-desc {
+        font-size: 11px;
+        color: var(--text2);
+        line-height: 1.4;
+      }
+      .catalog-card .cc-meta {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+      .catalog-card .cc-tag {
+        font-size: 9px;
+        padding: 2px 7px;
+        border-radius: 10px;
+        background: var(--bg3);
+        color: var(--text2);
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+      }
+      .catalog-card .cc-tag.cat-llm {
+        background: rgba(124, 92, 252, 0.2);
+        color: var(--accent);
+      }
+      .catalog-card .cc-tag.cat-image {
+        background: rgba(92, 140, 252, 0.2);
+        color: var(--accent2);
+      }
+      .catalog-card .cc-tag.cat-upscaler {
+        background: rgba(74, 222, 128, 0.15);
+        color: var(--success);
+      }
+      .catalog-card .cc-tag.vram {
+        background: var(--bg4);
+        color: var(--warn);
+      }
+      .catalog-card .cc-tag.recommended {
+        background: rgba(74, 222, 128, 0.2);
+        color: var(--success);
+      }
+      .catalog-card .cc-footer {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-top: auto;
+      }
+      .catalog-card .cc-size {
+        font-size: 10px;
+        color: var(--text3);
+      }
+      .catalog-card .cc-install-btn {
+        padding: 5px 12px;
+        font-size: 11px;
       }
       .download-form h3 {
         font-size: 14px;
@@ -1041,6 +1165,54 @@
       .train-actions {
         display: flex;
         gap: 10px;
+      }
+
+      /* ── Input modal ───────────────────────────────────────────── */
+      #input-modal {
+        display: none;
+        position: fixed;
+        inset: 0;
+        z-index: 250;
+        align-items: center;
+        justify-content: center;
+      }
+      #input-modal.open {
+        display: flex;
+      }
+      #input-modal .modal-backdrop {
+        position: absolute;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.65);
+      }
+      #input-modal .modal-box {
+        position: relative;
+        background: var(--bg1);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 22px 24px;
+        min-width: 360px;
+        max-width: 480px;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+      }
+      #input-modal .modal-title {
+        font-size: 15px;
+        font-weight: 600;
+        color: var(--text);
+      }
+      #input-modal .modal-body {
+        font-size: 12px;
+        color: var(--text2);
+      }
+      #input-modal .modal-body:empty {
+        display: none;
+      }
+      #input-modal .modal-actions {
+        display: flex;
+        gap: 10px;
+        justify-content: flex-end;
       }
 
       /* ── Toast ───────────────────────────────────────────────────── */
@@ -1787,6 +1959,38 @@ face asymmetry, eyes asymmetry, deformed eyes, open mouth, cartoon, painting, bl
           </div>
           <div id="models-list"></div>
 
+          <div style="margin-top: 24px" class="catalog-section">
+            <div class="catalog-header">
+              <h3>✨ Model Catalog</h3>
+              <div class="catalog-controls">
+                <span id="catalog-vram-badge" class="catalog-badge">
+                  Detecting GPU…
+                </span>
+                <label style="font-size: 11px; color: var(--text2)">
+                  <input
+                    type="checkbox"
+                    id="catalog-show-all"
+                    style="accent-color: var(--accent); margin-right: 4px"
+                  />
+                  Show all (including models too large for your GPU)
+                </label>
+                <select
+                  class="field-select"
+                  id="catalog-category-filter"
+                  style="width: 140px"
+                >
+                  <option value="">All categories</option>
+                  <option value="llm">LLMs</option>
+                  <option value="image">Image Models</option>
+                  <option value="upscaler">Upscalers</option>
+                  <option value="face">Face Detectors</option>
+                  <option value="vae">Preview VAEs</option>
+                </select>
+              </div>
+            </div>
+            <div id="catalog-grid"></div>
+          </div>
+
           <div style="margin-top: 20px">
             <div class="download-form">
               <h3>Download from Hugging Face</h3>
@@ -1820,6 +2024,24 @@ face asymmetry, eyes asymmetry, deformed eyes, open mouth, cartoon, painting, bl
               <div id="diagnostics-log"></div>
             </div>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Input Modal -->
+    <div id="input-modal">
+      <div class="modal-backdrop"></div>
+      <div class="modal-box">
+        <div class="modal-title" id="input-modal-title">Enter a value</div>
+        <div class="modal-body" id="input-modal-body"></div>
+        <input class="field-input" id="input-modal-input" type="text" />
+        <div class="modal-actions">
+          <button class="btn btn-ghost btn-sm" id="input-modal-cancel">
+            Cancel
+          </button>
+          <button class="btn btn-primary btn-sm" id="input-modal-ok">
+            OK
+          </button>
         </div>
       </div>
     </div>

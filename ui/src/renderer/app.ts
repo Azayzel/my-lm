@@ -23,6 +23,98 @@ function $<T extends HTMLElement>(
   return parent.querySelector<T>(sel)!;
 }
 
+// Electron disables window.prompt() in renderer — this is our replacement.
+function askInput(
+  title: string,
+  body = "",
+  placeholder = "",
+  initial = "",
+): Promise<string | null> {
+  return new Promise((resolve) => {
+    const modal = $<HTMLElement>("#input-modal");
+    const titleEl = $<HTMLElement>("#input-modal-title");
+    const bodyEl = $<HTMLElement>("#input-modal-body");
+    const input = $<HTMLInputElement>("#input-modal-input");
+    const okBtn = $<HTMLButtonElement>("#input-modal-ok");
+    const cancelBtn = $<HTMLButtonElement>("#input-modal-cancel");
+
+    titleEl.textContent = title;
+    bodyEl.textContent = body;
+    input.placeholder = placeholder;
+    input.value = initial;
+    modal.classList.add("open");
+    setTimeout(() => input.focus(), 0);
+
+    const cleanup = () => {
+      modal.classList.remove("open");
+      okBtn.removeEventListener("click", onOk);
+      cancelBtn.removeEventListener("click", onCancel);
+      input.removeEventListener("keydown", onKey);
+    };
+    const onOk = () => {
+      const v = input.value.trim();
+      cleanup();
+      resolve(v || null);
+    };
+    const onCancel = () => {
+      cleanup();
+      resolve(null);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Enter") onOk();
+      else if (e.key === "Escape") onCancel();
+    };
+
+    okBtn.addEventListener("click", onOk);
+    cancelBtn.addEventListener("click", onCancel);
+    input.addEventListener("keydown", onKey);
+  });
+}
+
+function askConfirm(title: string, body = ""): Promise<boolean> {
+  return new Promise((resolve) => {
+    const modal = $<HTMLElement>("#input-modal");
+    const titleEl = $<HTMLElement>("#input-modal-title");
+    const bodyEl = $<HTMLElement>("#input-modal-body");
+    const input = $<HTMLInputElement>("#input-modal-input");
+    const okBtn = $<HTMLButtonElement>("#input-modal-ok");
+    const cancelBtn = $<HTMLButtonElement>("#input-modal-cancel");
+
+    titleEl.textContent = title;
+    bodyEl.textContent = body;
+    input.style.display = "none";
+    okBtn.textContent = "Confirm";
+    modal.classList.add("open");
+    setTimeout(() => okBtn.focus(), 0);
+
+    const cleanup = () => {
+      modal.classList.remove("open");
+      input.style.display = "";
+      okBtn.textContent = "OK";
+      okBtn.removeEventListener("click", onOk);
+      cancelBtn.removeEventListener("click", onCancel);
+      document.removeEventListener("keydown", onKey);
+    };
+    const onOk = () => {
+      cleanup();
+      resolve(true);
+    };
+    const onCancel = () => {
+      cleanup();
+      resolve(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (!modal.classList.contains("open")) return;
+      if (e.key === "Enter") onOk();
+      else if (e.key === "Escape") onCancel();
+    };
+
+    okBtn.addEventListener("click", onOk);
+    cancelBtn.addEventListener("click", onCancel);
+    document.addEventListener("keydown", onKey);
+  });
+}
+
 function showToast(
   msg: string,
   kind: "success" | "error" | "info" = "info",
@@ -53,7 +145,10 @@ function activateScreen(name: string) {
   if (navBtn) navBtn.classList.add("active");
 
   if (name === "media") loadMediaGrid();
-  if (name === "models") loadModelsList();
+  if (name === "models") {
+    loadModelsList();
+    loadCatalog();
+  }
   if (name === "gpu") loadGpuInfo();
 }
 
@@ -411,6 +506,13 @@ window.lavely.image.onEvent((msg: BridgeMsg) => {
     progressLabelText.textContent = label;
     progressWrap.style.display = "flex";
     updateEta(step, total);
+    // Streaming preview from TAESDXL
+    const preview = msg["preview"];
+    if (typeof preview === "string" && preview.length > 0) {
+      genImage.src = `data:image/png;base64,${preview}`;
+      genImage.style.display = "block";
+      imagePlaceholder.style.display = "none";
+    }
   } else if (msg.type === "done") {
     state.generating = false;
     updateImageUI();
@@ -695,6 +797,139 @@ window.lavely.models.onDownloadEvent((msg: BridgeMsg) => {
 $("#dl-browse-btn").addEventListener("click", async () => {
   const dir = await window.lavely.dialog.openDir();
   if (dir) ($("#dl-target-dir") as HTMLInputElement).value = dir;
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MODEL CATALOG
+// ─────────────────────────────────────────────────────────────────────────────
+
+const catalogState = {
+  vramGb: 0,
+  entries: [] as CatalogEntry[],
+};
+
+const catalogGrid = $<HTMLDivElement>("#catalog-grid");
+const catalogVramBadge = $<HTMLElement>("#catalog-vram-badge");
+const catalogShowAll = $<HTMLInputElement>("#catalog-show-all");
+const catalogCategoryFilter = $<HTMLSelectElement>("#catalog-category-filter");
+
+async function detectGpuVram(): Promise<number> {
+  try {
+    const info = await window.lavely.system.gpuInfo();
+    const dev = info.python?.devices?.[0];
+    if (dev?.total_memory_gb) return dev.total_memory_gb;
+    const sm = info.nvidia?.[0];
+    if (sm?.memoryMb) return sm.memoryMb / 1024;
+  } catch {
+    /* ignore */
+  }
+  return 0;
+}
+
+const CAT_LABEL: Record<CatalogEntry["category"], string> = {
+  llm: "LLM",
+  image: "Image",
+  upscaler: "Upscaler",
+  face: "Face",
+  vae: "VAE",
+};
+
+function renderCatalog() {
+  catalogGrid.innerHTML = "";
+  const showAll = catalogShowAll.checked;
+  const categoryFilter = catalogCategoryFilter.value;
+  const vram = catalogState.vramGb;
+
+  const visible = catalogState.entries.filter((e) => {
+    if (categoryFilter && e.category !== categoryFilter) return false;
+    if (!showAll && vram > 0 && e.minVramGb > vram) return false;
+    return true;
+  });
+
+  if (!visible.length) {
+    catalogGrid.innerHTML =
+      '<div style="color:var(--text3);font-size:12px;grid-column:1/-1;padding:16px;text-align:center;">No models match the current filter.</div>';
+    return;
+  }
+
+  visible.forEach((e) => {
+    const fits = vram === 0 || e.minVramGb <= vram;
+    const card = document.createElement("div");
+    card.className = "catalog-card";
+    if (e.installed) card.classList.add("installed");
+    if (!fits) card.classList.add("too-big");
+
+    const tags = [`<span class="cc-tag cat-${e.category}">${CAT_LABEL[e.category]}</span>`];
+    tags.push(`<span class="cc-tag vram">${e.minVramGb}GB+</span>`);
+    if (e.tags.includes("recommended")) {
+      tags.push('<span class="cc-tag recommended">Recommended</span>');
+    }
+
+    const btnLabel = e.installed ? "✓ Installed" : "⬇ Install";
+    const btnDisabled = e.installed ? "disabled" : "";
+
+    card.innerHTML = `
+      <div class="cc-name">${e.name}</div>
+      <div class="cc-repo">${e.repoId}</div>
+      <div class="cc-desc">${e.description}</div>
+      <div class="cc-meta">${tags.join("")}</div>
+      <div class="cc-footer">
+        <span class="cc-size">${e.sizeGb.toFixed(1)} GB</span>
+        <button class="btn btn-primary cc-install-btn" data-id="${e.id}" ${btnDisabled}>
+          ${btnLabel}
+        </button>
+      </div>
+    `;
+
+    const btn = card.querySelector<HTMLButtonElement>(".cc-install-btn")!;
+    btn.addEventListener("click", async () => {
+      if (e.installed) return;
+      btn.disabled = true;
+      btn.textContent = "Downloading…";
+      const type =
+        e.category === "llm" ? "llm" : e.category === "image" ? "image" : "other";
+      logDownload(`▶ Installing ${e.name} (${e.repoId}) → models/${e.targetDir}`);
+      await window.lavely.models.download(e.repoId, e.targetDir, type);
+    });
+
+    catalogGrid.appendChild(card);
+  });
+}
+
+async function loadCatalog() {
+  if (catalogState.vramGb === 0) {
+    catalogState.vramGb = await detectGpuVram();
+    if (catalogState.vramGb > 0) {
+      catalogVramBadge.textContent = `Detected: ${catalogState.vramGb.toFixed(1)} GB VRAM`;
+      catalogVramBadge.classList.add("ok");
+    } else {
+      catalogVramBadge.textContent = "GPU not detected — showing all";
+      catalogShowAll.checked = true;
+    }
+  }
+  catalogState.entries = await window.lavely.catalog.list(catalogState.vramGb || undefined);
+  // Re-fetch with no filter if "show all" — the filtering is done client-side
+  // so we can toggle instantly without a round-trip.
+  if (catalogShowAll.checked) {
+    catalogState.entries = await window.lavely.catalog.list();
+  }
+  renderCatalog();
+}
+
+catalogShowAll.addEventListener("change", async () => {
+  // When toggling to "show all", fetch the full list
+  catalogState.entries = await window.lavely.catalog.list(
+    catalogShowAll.checked ? undefined : catalogState.vramGb || undefined,
+  );
+  renderCatalog();
+});
+catalogCategoryFilter.addEventListener("change", renderCatalog);
+
+// Refresh catalog state whenever a download completes (installed flag flips)
+window.lavely.models.onDownloadEvent((msg: BridgeMsg) => {
+  if (msg.type === "done") {
+    loadCatalog();
+  }
 });
 
 $("#dl-start-btn").addEventListener("click", async () => {
@@ -1032,10 +1267,14 @@ async function refreshSavedPrompts() {
 }
 
 savePromptBtn.addEventListener("click", async () => {
-  const name = prompt("Name this prompt:");
-  if (!name || !name.trim()) return;
+  const name = await askInput(
+    "Save prompt",
+    "Give this prompt a name so you can recall it later.",
+    "e.g. Cinematic portrait",
+  );
+  if (!name) return;
   const entry = {
-    name: name.trim(),
+    name,
     prompt: buildPrompt(),
     negative_prompt: ($("#neg-prompt") as HTMLTextAreaElement).value,
     params: {
@@ -1119,7 +1358,11 @@ deletePromptBtn.addEventListener("click", async () => {
   }
   const entry = savedPromptsCache.find((p) => p.id === id);
   if (!entry) return;
-  if (!confirm(`Delete prompt "${entry.name}"?`)) return;
+  const ok = await askConfirm(
+    "Delete saved prompt?",
+    `"${entry.name}" will be permanently removed.`,
+  );
+  if (!ok) return;
   await window.lavely.prompts.delete(id);
   await refreshSavedPrompts();
   showToast("Prompt deleted", "info");

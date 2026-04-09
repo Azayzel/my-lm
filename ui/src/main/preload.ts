@@ -44,6 +44,11 @@ contextBridge.exposeInMainWorld("lavely", {
     delete: (id: string) => ipcRenderer.invoke("history:delete", id),
   },
 
+  // Curated model catalog
+  catalog: {
+    list: (vramGb?: number) => ipcRenderer.invoke("catalog:list", vramGb),
+  },
+
   // Saved prompts
   prompts: {
     list: () => ipcRenderer.invoke("prompts:list"),

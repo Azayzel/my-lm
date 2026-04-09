@@ -8,6 +8,7 @@ import { HistoryStore } from "./historyStore";
 import { ModelManager } from "./modelManager";
 import { TrainBridge, TrainConfig } from "./trainBridge";
 import { PromptStore, SavedPrompt } from "./promptStore";
+import { MODEL_CATALOG, filterByVram } from "./modelCatalog";
 
 // ─── Paths ────────────────────────────────────────────────────────────────────
 const ROOT = path.resolve(__dirname, "..", "..", ".."); // ui/../.. => repo root
@@ -347,6 +348,18 @@ ipcMain.handle(
 ipcMain.handle("models:exists", async (_e, modelPath: string) =>
   fs.existsSync(modelPath),
 );
+
+// ─── Model catalog (curated, filterable by VRAM) ─────────────────────────
+ipcMain.handle("catalog:list", async (_e, vramGb?: number) => {
+  const installedDirs = new Set(
+    modelManager.listModels().map((m) => m.name.toLowerCase()),
+  );
+  const filtered = vramGb ? filterByVram(vramGb) : MODEL_CATALOG;
+  return filtered.map((entry) => ({
+    ...entry,
+    installed: installedDirs.has(entry.targetDir.toLowerCase()),
+  }));
+});
 
 // ─── System diagnostics ──────────────────────────────────────────────────────
 ipcMain.handle("system:diagnostics", async () => {

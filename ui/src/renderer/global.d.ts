@@ -30,6 +30,9 @@ interface LavelyAPI {
     clear(): Promise<void>;
     delete(id: string): Promise<boolean>;
   };
+  catalog: {
+    list(vramGb?: number): Promise<CatalogEntry[]>;
+  };
   prompts: {
     list(): Promise<SavedPrompt[]>;
     save(
@@ -153,6 +156,19 @@ interface HistoryEntry {
   prompt?: string;
   imagePath?: string;
   params?: Record<string, unknown>;
+}
+
+interface CatalogEntry {
+  id: string;
+  name: string;
+  repoId: string;
+  category: "llm" | "image" | "upscaler" | "vae" | "face";
+  minVramGb: number;
+  sizeGb: number;
+  description: string;
+  tags: string[];
+  targetDir: string;
+  installed: boolean;
 }
 
 interface SavedPrompt {

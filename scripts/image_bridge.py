@@ -42,6 +42,58 @@ def emit(obj: dict):
     print(json.dumps(obj), flush=True)
 
 
+def _load_taesd_preview(model_dir: str = "models/taesdxl"):
+    """Load TAESDXL for fast latent->RGB previews during diffusion steps.
+
+    Returns (tiny_vae, None) if available, or (None, None) if loading fails.
+    """
+    import torch
+    from pathlib import Path
+    from diffusers import AutoencoderTiny
+
+    base = Path(__file__).resolve().parent.parent
+    candidates = [
+        Path(model_dir),
+        base / model_dir,
+        base / "models" / "taesdxl",
+    ]
+    path = next((p for p in candidates if p.exists()), None)
+    if path is None:
+        return None
+
+    try:
+        tiny = AutoencoderTiny.from_pretrained(str(path), torch_dtype=torch.float16)
+        tiny.to("cuda")
+        tiny.eval()
+        return tiny
+    except Exception:
+        return None
+
+
+def _latent_to_preview_b64(tiny_vae, latents) -> str | None:
+    """Decode latents via TAESDXL and return a base64 PNG string."""
+    import base64
+    import io
+
+    import torch
+    from PIL import Image
+
+    try:
+        with torch.inference_mode():
+            decoded = tiny_vae.decode(latents.to(tiny_vae.dtype)).sample
+        img = decoded[0].float().clamp(-1, 1)
+        img = (img + 1) / 2  # [0, 1]
+        img = (img * 255).byte().cpu().numpy().transpose(1, 2, 0)
+        pil = Image.fromarray(img)
+        # Downscale for smaller payloads
+        pil.thumbnail((512, 512), Image.LANCZOS)
+        buf = io.BytesIO()
+        pil.save(buf, format="PNG")
+        return base64.b64encode(buf.getvalue()).decode("ascii")
+    except Exception:
+        return None
+
+
 def _patch_compel_multi_empty_z():
     """Compel 2.3.1 has a bug: EmbeddingsProviderMulti is missing `empty_z`,
     which is required for internal padding when positive/negative prompts
@@ -91,9 +143,18 @@ def load_pipeline(model_dir: str):
     return pipe, compel
 
 
-def make_progress_callback(total_steps: int):
+def make_progress_callback(total_steps: int, tiny_vae=None, preview_every: int = 2):
     def callback(pipe, step_index, timestep, callback_kwargs):
-        emit({"type": "progress", "step": step_index + 1, "total": total_steps})
+        step = step_index + 1
+        payload = {"type": "progress", "step": step, "total": total_steps}
+        # Decode and send a preview every `preview_every` steps (and on last step)
+        if tiny_vae is not None and (step % preview_every == 0 or step == total_steps):
+            latents = callback_kwargs.get("latents")
+            if latents is not None:
+                b64 = _latent_to_preview_b64(tiny_vae, latents)
+                if b64:
+                    payload["preview"] = b64
+        emit(payload)
         return callback_kwargs
     return callback
 
@@ -105,6 +166,7 @@ def run_generation(
     upscaler_path: str,
     output_dir: str,
     face_detector_path: str = "",
+    tiny_vae=None,
 ):
     import torch
     from upscaler import load_upscaler, upscale_image
@@ -145,7 +207,7 @@ def run_generation(
         guidance_scale=guidance,
         width=width,
         height=height,
-        callback_on_step_end=make_progress_callback(steps),
+        callback_on_step_end=make_progress_callback(steps, tiny_vae=tiny_vae),
     ).images[0]
 
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -227,6 +289,9 @@ def main():
 
     try:
         pipe, compel = load_pipeline(model_dir)
+        tiny_vae = _load_taesd_preview()
+        if tiny_vae is None:
+            emit({"type": "log", "text": "TAESDXL not found — streaming previews disabled"})
         emit({"type": "ready"})
     except Exception as e:
         emit({"type": "error", "message": f"Failed to load pipeline: {e}"})
@@ -250,6 +315,7 @@ def main():
                 upscaler_path,
                 output_dir,
                 face_detector_path,
+                tiny_vae=tiny_vae,
             )
         except Exception as e:
             emit({"type": "error", "message": str(e)})
