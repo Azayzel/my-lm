@@ -1,0 +1,1758 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' file: data:; font-src 'self' data:;"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Lavely</title>
+    <style>
+      /* ── Reset & Base ─────────────────────────────────────────────── */
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      :root {
+        --bg0: #0d0d0f;
+        --bg1: #13131a;
+        --bg2: #1a1a24;
+        --bg3: #22222f;
+        --bg4: #2a2a3a;
+        --accent: #7c5cfc;
+        --accent2: #5c8cfc;
+        --accent-glow: rgba(124, 92, 252, 0.3);
+        --text: #e8e8f0;
+        --text2: #9898b0;
+        --text3: #5a5a70;
+        --border: #2a2a3a;
+        --success: #4ade80;
+        --warn: #facc15;
+        --danger: #f87171;
+        --radius: 10px;
+        --sidebar-w: 220px;
+        --titlebar-h: 40px;
+      }
+
+      html,
+      body {
+        height: 100%;
+        width: 100%;
+        background: var(--bg0);
+        color: var(--text);
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+        font-size: 14px;
+        overflow: hidden;
+        user-select: none;
+      }
+
+      /* ── Titlebar ─────────────────────────────────────────────────── */
+      #titlebar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: var(--titlebar-h);
+        background: var(--bg1);
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        -webkit-app-region: drag;
+        z-index: 100;
+      }
+      #titlebar .logo {
+        padding: 0 16px;
+        font-weight: 700;
+        font-size: 15px;
+        letter-spacing: 0.5px;
+        background: linear-gradient(135deg, var(--accent), var(--accent2));
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+      }
+      #titlebar .title-spacer {
+        flex: 1;
+      }
+      #titlebar .win-btns {
+        display: flex;
+        -webkit-app-region: no-drag;
+        height: 100%;
+      }
+      #titlebar .win-btns button {
+        width: 46px;
+        height: 100%;
+        background: transparent;
+        border: none;
+        color: var(--text2);
+        font-size: 16px;
+        cursor: pointer;
+        transition: background 0.15s;
+      }
+      #titlebar .win-btns button:hover {
+        background: var(--bg3);
+      }
+      #titlebar .win-btns button.close:hover {
+        background: var(--danger);
+        color: #fff;
+      }
+
+      /* ── Layout ───────────────────────────────────────────────────── */
+      #app {
+        display: flex;
+        height: 100vh;
+        padding-top: var(--titlebar-h);
+      }
+
+      /* ── Sidebar ─────────────────────────────────────────────────── */
+      #sidebar {
+        width: var(--sidebar-w);
+        background: var(--bg1);
+        border-right: 1px solid var(--border);
+        display: flex;
+        flex-direction: column;
+        padding: 12px 0;
+        flex-shrink: 0;
+      }
+      .nav-section-label {
+        padding: 12px 16px 4px;
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        color: var(--text3);
+      }
+      .nav-btn {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 16px;
+        cursor: pointer;
+        border-radius: 8px;
+        margin: 2px 8px;
+        color: var(--text2);
+        font-size: 13px;
+        font-weight: 500;
+        transition:
+          background 0.15s,
+          color 0.15s;
+      }
+      .nav-btn:hover {
+        background: var(--bg3);
+        color: var(--text);
+      }
+      .nav-btn.active {
+        background: linear-gradient(
+          135deg,
+          rgba(124, 92, 252, 0.2),
+          rgba(92, 140, 252, 0.1)
+        );
+        color: var(--accent);
+        border: 1px solid rgba(124, 92, 252, 0.3);
+      }
+      .nav-btn .icon {
+        font-size: 18px;
+        width: 22px;
+        text-align: center;
+      }
+
+      .sidebar-footer {
+        margin-top: auto;
+        padding: 12px;
+      }
+      .model-status {
+        border-radius: var(--radius);
+        background: var(--bg2);
+        border: 1px solid var(--border);
+        padding: 10px 12px;
+        font-size: 11px;
+      }
+      .model-status .ms-label {
+        color: var(--text3);
+        margin-bottom: 4px;
+      }
+      .model-status .ms-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-top: 4px;
+      }
+      .dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--text3);
+        flex-shrink: 0;
+      }
+      .dot.on {
+        background: var(--success);
+        box-shadow: 0 0 6px var(--success);
+      }
+      .dot.loading {
+        background: var(--warn);
+        animation: pulse 1s infinite;
+      }
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.4;
+        }
+      }
+
+      /* ── Main Panel ───────────────────────────────────────────────── */
+      #main {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        position: relative;
+      }
+
+      /* ── Screen ───────────────────────────────────────────────────── */
+      .screen {
+        display: none;
+        flex: 1;
+        flex-direction: column;
+        height: 100%;
+        overflow: hidden;
+      }
+      .screen.active {
+        display: flex;
+      }
+
+      /* ─────────────── CHAT SCREEN ──────────────────────────────────── */
+      #screen-chat {
+        display: none;
+        flex-direction: row;
+        height: 100%;
+      }
+      #screen-chat.active {
+        display: flex;
+      }
+
+      #chat-area {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+
+      #messages {
+        flex: 1;
+        overflow-y: auto;
+        padding: 20px 24px;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+      #messages::-webkit-scrollbar {
+        width: 5px;
+      }
+      #messages::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      #messages::-webkit-scrollbar-thumb {
+        background: var(--bg4);
+        border-radius: 3px;
+      }
+
+      .msg {
+        display: flex;
+        gap: 12px;
+        max-width: 85%;
+        animation: fadeIn 0.2s ease;
+      }
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+          transform: translateY(8px);
+        }
+        to {
+          opacity: 1;
+          transform: none;
+        }
+      }
+      .msg.user {
+        align-self: flex-end;
+        flex-direction: row-reverse;
+      }
+      .msg.assistant {
+        align-self: flex-start;
+      }
+
+      .avatar {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 16px;
+        flex-shrink: 0;
+        background: var(--bg3);
+      }
+      .msg.user .avatar {
+        background: linear-gradient(135deg, var(--accent), var(--accent2));
+      }
+      .msg.assistant .avatar {
+        background: var(--bg3);
+      }
+
+      .bubble {
+        padding: 12px 16px;
+        border-radius: 16px;
+        line-height: 1.6;
+        font-size: 13.5px;
+      }
+      .msg.user .bubble {
+        background: linear-gradient(135deg, var(--accent), var(--accent2));
+        color: #fff;
+        border-bottom-right-radius: 4px;
+      }
+      .msg.assistant .bubble {
+        background: var(--bg2);
+        border: 1px solid var(--border);
+        color: var(--text);
+        border-bottom-left-radius: 4px;
+      }
+
+      /* streaming cursor */
+      .typing-cursor::after {
+        content: "▋";
+        animation: blink 0.7s infinite;
+        color: var(--accent);
+      }
+      @keyframes blink {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0;
+        }
+      }
+
+      /* chat input bar */
+      #chat-input-bar {
+        padding: 16px 24px;
+        background: var(--bg1);
+        border-top: 1px solid var(--border);
+      }
+      .input-wrap {
+        display: flex;
+        align-items: flex-end;
+        gap: 10px;
+        background: var(--bg2);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 10px 14px;
+        transition: border-color 0.2s;
+      }
+      .input-wrap:focus-within {
+        border-color: var(--accent);
+      }
+      #chat-input {
+        flex: 1;
+        resize: none;
+        background: transparent;
+        border: none;
+        outline: none;
+        color: var(--text);
+        font-size: 14px;
+        line-height: 1.5;
+        max-height: 160px;
+        overflow-y: auto;
+        font-family: inherit;
+      }
+      #chat-input::placeholder {
+        color: var(--text3);
+      }
+      #chat-send-btn {
+        width: 36px;
+        height: 36px;
+        border-radius: 10px;
+        background: linear-gradient(135deg, var(--accent), var(--accent2));
+        border: none;
+        color: #fff;
+        font-size: 18px;
+        cursor: pointer;
+        transition: opacity 0.2s;
+        flex-shrink: 0;
+      }
+      #chat-send-btn:disabled {
+        opacity: 0.4;
+        cursor: default;
+      }
+      #chat-send-btn:hover:not(:disabled) {
+        opacity: 0.85;
+      }
+
+      /* chat right panel */
+      #chat-side-panel {
+        width: 280px;
+        flex-shrink: 0;
+        background: var(--bg1);
+        border-left: 1px solid var(--border);
+        display: flex;
+        flex-direction: column;
+        padding: 16px;
+        gap: 12px;
+        overflow-y: auto;
+      }
+      #chat-side-panel::-webkit-scrollbar {
+        width: 4px;
+      }
+      #chat-side-panel::-webkit-scrollbar-thumb {
+        background: var(--bg4);
+        border-radius: 2px;
+      }
+
+      .side-section {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .side-section h3 {
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.8px;
+        text-transform: uppercase;
+        color: var(--text3);
+      }
+
+      label.field-label {
+        display: block;
+        font-size: 11px;
+        color: var(--text3);
+        margin-bottom: 3px;
+      }
+      input[type="range"] {
+        width: 100%;
+        accent-color: var(--accent);
+      }
+      .range-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .range-val {
+        font-size: 12px;
+        color: var(--accent);
+        min-width: 28px;
+        text-align: right;
+      }
+
+      .field-input,
+      .field-textarea,
+      .field-select {
+        width: 100%;
+        padding: 7px 10px;
+        background: var(--bg2);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        color: var(--text);
+        font-size: 12px;
+        font-family: inherit;
+        transition: border-color 0.2s;
+        outline: none;
+      }
+      .field-input:focus,
+      .field-textarea:focus,
+      .field-select:focus {
+        border-color: var(--accent);
+      }
+      .field-textarea {
+        resize: vertical;
+        min-height: 60px;
+      }
+
+      .btn {
+        padding: 8px 14px;
+        border-radius: 8px;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        border: none;
+        transition: opacity 0.2s;
+      }
+      .btn:hover {
+        opacity: 0.85;
+      }
+      .btn:disabled {
+        opacity: 0.4;
+        cursor: default;
+      }
+      .btn-primary {
+        background: linear-gradient(135deg, var(--accent), var(--accent2));
+        color: #fff;
+      }
+      .btn-danger {
+        background: var(--danger);
+        color: #fff;
+      }
+      .btn-ghost {
+        background: var(--bg3);
+        border: 1px solid var(--border);
+        color: var(--text2);
+      }
+      .btn-block {
+        width: 100%;
+        text-align: center;
+      }
+      .btn-sm {
+        padding: 5px 10px;
+        font-size: 11px;
+      }
+
+      /* ─────────────── IMAGE SCREEN ─────────────────────────────────── */
+      #screen-image {
+        display: none;
+        flex-direction: row;
+        height: 100%;
+      }
+      #screen-image.active {
+        display: flex;
+      }
+
+      #image-preview-area {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        gap: 20px;
+        overflow: hidden;
+      }
+      #image-canvas-wrap {
+        flex: 1;
+        width: 100%;
+        max-width: 800px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--bg2);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        overflow: hidden;
+        position: relative;
+      }
+      #gen-image {
+        max-width: 100%;
+        max-height: 100%;
+        object-fit: contain;
+        border-radius: var(--radius);
+        display: none;
+      }
+      #image-placeholder {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 12px;
+        color: var(--text3);
+      }
+      #image-placeholder .ph-icon {
+        font-size: 48px;
+        opacity: 0.4;
+      }
+      #image-placeholder p {
+        font-size: 13px;
+      }
+
+      #progress-bar-wrap {
+        width: 100%;
+        max-width: 600px;
+        display: none;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .progress-label {
+        font-size: 12px;
+        color: var(--text2);
+        display: flex;
+        justify-content: space-between;
+      }
+      .progress-track {
+        height: 4px;
+        background: var(--bg3);
+        border-radius: 2px;
+        overflow: hidden;
+      }
+      .progress-fill {
+        height: 100%;
+        background: linear-gradient(90deg, var(--accent), var(--accent2));
+        border-radius: 2px;
+        transition: width 0.3s;
+        width: 0%;
+      }
+
+      /* image side panel */
+      #image-side-panel {
+        width: 300px;
+        flex-shrink: 0;
+        background: var(--bg1);
+        border-left: 1px solid var(--border);
+        display: flex;
+        flex-direction: column;
+        padding: 16px;
+        gap: 14px;
+        overflow-y: auto;
+      }
+      #image-side-panel::-webkit-scrollbar {
+        width: 4px;
+      }
+      #image-side-panel::-webkit-scrollbar-thumb {
+        background: var(--bg4);
+        border-radius: 2px;
+      }
+
+      .prompt-builder-grid {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      #full-prompt-preview {
+        background: var(--bg2);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 10px;
+        font-size: 11px;
+        color: var(--text2);
+        line-height: 1.5;
+        min-height: 50px;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
+      .generate-actions {
+        display: flex;
+        gap: 8px;
+      }
+
+      /* ─────────────── MEDIA SCREEN ────────────────────────────────── */
+      #screen-media {
+        flex-direction: column;
+        padding: 24px;
+        overflow: hidden;
+      }
+      #screen-media.active {
+        display: flex;
+      }
+
+      .media-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 16px;
+      }
+      .media-header h2 {
+        font-size: 18px;
+        font-weight: 700;
+      }
+
+      #media-grid {
+        flex: 1;
+        overflow-y: auto;
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+        gap: 12px;
+        padding-right: 4px;
+      }
+      #media-grid::-webkit-scrollbar {
+        width: 5px;
+      }
+      #media-grid::-webkit-scrollbar-thumb {
+        background: var(--bg4);
+        border-radius: 3px;
+      }
+
+      .media-card {
+        background: var(--bg2);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        overflow: hidden;
+        cursor: pointer;
+        transition:
+          transform 0.15s,
+          border-color 0.15s;
+        position: relative;
+      }
+      .media-card:hover {
+        transform: scale(1.02);
+        border-color: var(--accent);
+      }
+      .media-card img {
+        width: 100%;
+        aspect-ratio: 1;
+        object-fit: cover;
+        display: block;
+      }
+      .media-card-info {
+        padding: 8px 10px;
+      }
+      .media-card-name {
+        font-size: 11px;
+        color: var(--text2);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .media-card-actions {
+        position: absolute;
+        top: 6px;
+        right: 6px;
+        display: none;
+        gap: 4px;
+      }
+      .media-card:hover .media-card-actions {
+        display: flex;
+      }
+      .media-card-actions button {
+        width: 28px;
+        height: 28px;
+        border-radius: 6px;
+        background: rgba(13, 13, 15, 0.85);
+        border: none;
+        color: var(--text2);
+        font-size: 14px;
+        cursor: pointer;
+      }
+      .media-card-actions button:hover {
+        color: var(--text);
+        background: var(--bg4);
+      }
+
+      .empty-state {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        color: var(--text3);
+        flex: 1;
+      }
+      .empty-state .es-icon {
+        font-size: 48px;
+        opacity: 0.3;
+      }
+
+      /* ─────────────── MODELS SCREEN ───────────────────────────────── */
+      #screen-models {
+        flex-direction: column;
+        padding: 24px;
+        overflow: hidden;
+      }
+      #screen-models.active {
+        display: flex;
+      }
+
+      /* ─────────────── GPU SCREEN ─────────────────────────────────── */
+      #screen-gpu {
+        flex-direction: column;
+        padding: 24px;
+        overflow: hidden;
+      }
+      #screen-gpu.active {
+        display: flex;
+      }
+      .gpu-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 16px;
+      }
+      .gpu-header h2 {
+        font-size: 18px;
+        font-weight: 700;
+      }
+      #gpu-content {
+        flex: 1;
+        overflow-y: auto;
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 12px;
+        padding-right: 4px;
+      }
+      .gpu-card {
+        background: var(--bg2);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 12px 14px;
+      }
+      .gpu-card h3 {
+        font-size: 13px;
+        margin-bottom: 8px;
+      }
+      .kv {
+        display: grid;
+        grid-template-columns: 120px 1fr;
+        gap: 6px;
+        font-size: 12px;
+      }
+      .kv .k {
+        color: var(--text3);
+      }
+      .kv .v {
+        color: var(--text);
+        word-break: break-word;
+      }
+      #gpu-raw {
+        margin-top: 12px;
+        background: var(--bg0);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 10px;
+        font-family: "Courier New", monospace;
+        font-size: 11px;
+        color: var(--text2);
+        height: 120px;
+        overflow-y: auto;
+        white-space: pre-wrap;
+      }
+
+      .models-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 20px;
+      }
+      .models-header h2 {
+        font-size: 18px;
+        font-weight: 700;
+      }
+
+      #models-list {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        overflow-y: auto;
+        flex: 1;
+      }
+      #models-list::-webkit-scrollbar {
+        width: 5px;
+      }
+      #models-list::-webkit-scrollbar-thumb {
+        background: var(--bg4);
+        border-radius: 3px;
+      }
+
+      .model-card {
+        background: var(--bg2);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 14px 16px;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+      }
+      .model-card-icon {
+        font-size: 24px;
+      }
+      .model-card-info {
+        flex: 1;
+      }
+      .model-card-info .mc-name {
+        font-weight: 600;
+        font-size: 14px;
+      }
+      .model-card-info .mc-path {
+        font-size: 11px;
+        color: var(--text3);
+        margin-top: 2px;
+      }
+      .model-card-info .mc-type {
+        font-size: 10px;
+        padding: 2px 7px;
+        border-radius: 10px;
+        background: var(--bg3);
+        color: var(--text2);
+        display: inline-block;
+        margin-top: 4px;
+      }
+
+      .download-form {
+        background: var(--bg2);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .download-form h3 {
+        font-size: 14px;
+        font-weight: 600;
+      }
+      .download-form .form-row {
+        display: flex;
+        gap: 10px;
+      }
+      .download-form .form-row .field-input {
+        flex: 1;
+      }
+
+      #download-log {
+        background: var(--bg0);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 10px;
+        font-family: "Courier New", monospace;
+        font-size: 11px;
+        color: var(--text2);
+        height: 100px;
+        overflow-y: auto;
+        display: none;
+      }
+      #diagnostics-log {
+        background: var(--bg0);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 10px;
+        font-family: "Courier New", monospace;
+        font-size: 11px;
+        color: var(--text2);
+        min-height: 90px;
+        max-height: 180px;
+        overflow-y: auto;
+        display: none;
+        white-space: pre-wrap;
+      }
+
+      /* ── Train screen ───────────────────────────────────────────── */
+      #screen-train {
+        flex-direction: column;
+        padding: 24px 32px;
+        overflow-y: auto;
+        gap: 18px;
+      }
+      #screen-train h2 {
+        font-size: 20px;
+        font-weight: 700;
+        letter-spacing: 0.3px;
+      }
+      #screen-train .hint {
+        color: var(--text3);
+        font-size: 12px;
+        margin-top: -8px;
+      }
+      .train-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+      }
+      .train-card {
+        background: var(--bg2);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 18px 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .train-card h3 {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--text);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+      .train-card .path-row {
+        display: flex;
+        gap: 8px;
+      }
+      .train-card .path-row .field-input {
+        flex: 1;
+        font-family: "Courier New", monospace;
+        font-size: 11px;
+      }
+      .train-progress {
+        background: var(--bg2);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 18px 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .train-progress .bar-wrap {
+        height: 10px;
+        background: var(--bg0);
+        border-radius: 10px;
+        overflow: hidden;
+        border: 1px solid var(--border);
+      }
+      .train-progress .bar-fill {
+        height: 100%;
+        width: 0%;
+        background: linear-gradient(90deg, var(--accent), var(--accent2));
+        transition: width 0.3s;
+      }
+      .train-progress .metrics {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 10px;
+        font-size: 11px;
+      }
+      .train-progress .metric {
+        background: var(--bg0);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 8px 10px;
+      }
+      .train-progress .metric .label {
+        color: var(--text3);
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+      .train-progress .metric .value {
+        color: var(--text);
+        font-size: 14px;
+        font-weight: 600;
+        margin-top: 2px;
+      }
+      #train-log {
+        background: var(--bg0);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 10px 12px;
+        font-family: "Courier New", monospace;
+        font-size: 11px;
+        color: var(--text2);
+        height: 180px;
+        overflow-y: auto;
+        white-space: pre-wrap;
+        line-height: 1.5;
+      }
+      #train-log .err {
+        color: var(--danger);
+      }
+      #train-log .ok {
+        color: var(--success);
+      }
+      .train-actions {
+        display: flex;
+        gap: 10px;
+      }
+
+      /* ── Toast ───────────────────────────────────────────────────── */
+      #toast-container {
+        position: fixed;
+        bottom: 24px;
+        right: 24px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        z-index: 999;
+        pointer-events: none;
+      }
+      .toast {
+        padding: 10px 16px;
+        border-radius: 10px;
+        background: var(--bg3);
+        border: 1px solid var(--border);
+        color: var(--text);
+        font-size: 12px;
+        animation: toastIn 0.2s ease;
+        pointer-events: auto;
+        max-width: 320px;
+      }
+      .toast.success {
+        border-color: var(--success);
+      }
+      .toast.error {
+        border-color: var(--danger);
+      }
+      @keyframes toastIn {
+        from {
+          opacity: 0;
+          transform: translateX(20px);
+        }
+        to {
+          opacity: 1;
+          transform: none;
+        }
+      }
+
+      /* ── Lightbox ─────────────────────────────────────────────────── */
+      #lightbox {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.9);
+        z-index: 200;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+        gap: 16px;
+      }
+      #lightbox.open {
+        display: flex;
+      }
+      #lightbox img {
+        max-width: 90vw;
+        max-height: 85vh;
+        border-radius: var(--radius);
+      }
+      #lightbox-close {
+        position: absolute;
+        top: 16px;
+        right: 20px;
+        font-size: 24px;
+        color: var(--text2);
+        cursor: pointer;
+        background: none;
+        border: none;
+      }
+      #lightbox-actions {
+        display: flex;
+        gap: 10px;
+      }
+
+      /* ── Scrollbars global ───────────────────────────────────────── */
+      * {
+        scrollbar-width: thin;
+        scrollbar-color: var(--bg4) transparent;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Titlebar -->
+    <div id="titlebar">
+      <span class="logo">✦ Lavely</span>
+      <div class="title-spacer"></div>
+      <div class="win-btns">
+        <button id="btn-min" title="Minimize">─</button>
+        <button id="btn-max" title="Maximize">□</button>
+        <button class="close" id="btn-close" title="Close">✕</button>
+      </div>
+    </div>
+
+    <div id="app">
+      <!-- Sidebar -->
+      <nav id="sidebar">
+        <span class="nav-section-label">Lavely</span>
+        <div class="nav-btn active" data-screen="chat">
+          <span class="icon">💬</span> Chat
+        </div>
+        <div class="nav-btn" data-screen="image">
+          <span class="icon">🎨</span> Generate
+        </div>
+        <div class="nav-btn" data-screen="media">
+          <span class="icon">🖼️</span> Media
+        </div>
+        <div class="nav-btn" data-screen="train">
+          <span class="icon">🎓</span> Train
+        </div>
+        <div class="nav-btn" data-screen="gpu">
+          <span class="icon">🖥️</span> GPU
+        </div>
+        <div class="nav-btn" data-screen="models">
+          <span class="icon">📦</span> Models
+        </div>
+
+        <div class="sidebar-footer">
+          <div class="model-status">
+            <div class="ms-label">Model Status</div>
+            <div class="ms-row">
+              <span style="color: var(--text2); font-size: 11px">LLM</span>
+              <div class="dot" id="llm-dot"></div>
+            </div>
+            <div class="ms-row">
+              <span style="color: var(--text2); font-size: 11px">Image</span>
+              <div class="dot" id="img-dot"></div>
+            </div>
+          </div>
+        </div>
+      </nav>
+
+      <!-- Main panel -->
+      <div id="main">
+        <!-- ── Chat Screen ── -->
+        <div class="screen" id="screen-chat">
+          <div id="chat-area">
+            <div id="messages">
+              <div class="msg assistant">
+                <div class="avatar">✦</div>
+                <div class="bubble">
+                  Hi! I'm <strong>Lavely-LM</strong>. Start the model from the
+                  panel on the right, then ask me anything.
+                </div>
+              </div>
+            </div>
+            <div id="chat-input-bar">
+              <div class="input-wrap">
+                <textarea
+                  id="chat-input"
+                  rows="1"
+                  placeholder="Message Lavely-LM…"
+                  maxlength="4096"
+                ></textarea>
+                <button id="chat-send-btn" title="Send">↑</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Chat right panel -->
+          <div id="chat-side-panel">
+            <div class="side-section">
+              <h3>LLM Model</h3>
+              <div class="btn btn-primary btn-block" id="llm-load-btn">
+                Load Model
+              </div>
+              <div
+                class="btn btn-ghost btn-block btn-sm"
+                id="llm-unload-btn"
+                style="display: none"
+              >
+                Unload
+              </div>
+            </div>
+
+            <div class="side-section">
+              <h3>System Prompt</h3>
+              <textarea
+                class="field-textarea"
+                id="system-prompt"
+                rows="4"
+                placeholder="You are Lavely-LM, a helpful AI assistant."
+              >
+You are Lavely-LM, a helpful AI assistant.</textarea
+              >
+            </div>
+
+            <div class="side-section">
+              <h3>Parameters</h3>
+              <label class="field-label">Max Tokens</label>
+              <div class="range-row">
+                <input
+                  type="range"
+                  id="max-tokens"
+                  min="64"
+                  max="2048"
+                  step="64"
+                  value="512"
+                />
+                <span class="range-val" id="max-tokens-val">512</span>
+              </div>
+              <label class="field-label">Temperature</label>
+              <div class="range-row">
+                <input
+                  type="range"
+                  id="temperature"
+                  min="0"
+                  max="2"
+                  step="0.05"
+                  value="0.7"
+                />
+                <span class="range-val" id="temperature-val">0.70</span>
+              </div>
+              <label class="field-label">Top-P</label>
+              <div class="range-row">
+                <input
+                  type="range"
+                  id="top-p"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  value="0.9"
+                />
+                <span class="range-val" id="top-p-val">0.90</span>
+              </div>
+            </div>
+
+            <div class="side-section">
+              <h3>History</h3>
+              <div class="btn btn-ghost btn-block btn-sm" id="clear-chat-btn">
+                Clear Conversation
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── Image Screen ── -->
+        <div class="screen" id="screen-image">
+          <div id="image-preview-area">
+            <div id="image-canvas-wrap">
+              <div id="image-placeholder">
+                <div class="ph-icon">🎨</div>
+                <p>Generated image will appear here</p>
+              </div>
+              <img id="gen-image" alt="Generated" />
+            </div>
+            <div id="progress-bar-wrap">
+              <div class="progress-label">
+                <span id="progress-label-text">Generating…</span>
+                <span id="progress-steps">0 / 0</span>
+              </div>
+              <div class="progress-track">
+                <div class="progress-fill" id="progress-fill"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Image right panel -->
+          <div id="image-side-panel">
+            <div class="side-section">
+              <h3>Image Model</h3>
+              <div class="btn btn-primary btn-block" id="img-load-btn">
+                Load Model
+              </div>
+              <div
+                class="btn btn-ghost btn-block btn-sm"
+                id="img-unload-btn"
+                style="display: none"
+              >
+                Unload
+              </div>
+            </div>
+
+            <div class="side-section">
+              <h3>Prompt Builder</h3>
+              <div class="prompt-builder-grid">
+                <div>
+                  <label class="field-label">Head (quality tags)</label>
+                  <input
+                    class="field-input"
+                    id="pb-head"
+                    type="text"
+                    value="masterpiece, best quality, photorealistic, ultra-detailed, 8k raw photo"
+                  />
+                </div>
+                <div>
+                  <label class="field-label">Subject / Name</label>
+                  <input
+                    class="field-input"
+                    id="pb-name"
+                    type="text"
+                    placeholder="e.g. Superman"
+                  />
+                </div>
+                <div>
+                  <label class="field-label">Position / Action</label>
+                  <input
+                    class="field-input"
+                    id="pb-position"
+                    type="text"
+                    placeholder="e.g. taking a mirror selfie while wearing the classic suit, smiling with a smirk"
+                  />
+                </div>
+                <div>
+                  <label class="field-label">Weights / Lighting / Style</label>
+                  <textarea
+                    class="field-textarea"
+                    id="pb-weights"
+                    rows="3"
+                    placeholder="Soft natural indoor lighting, realistic skin texture…"
+                  >
+Soft natural indoor lighting, realistic skin texture, flushed cheeks. sharp focus, intricate details, realistic anatomy, high resolution, depth of field</textarea
+                  >
+                </div>
+              </div>
+              <div style="margin-top: 6px">
+                <label class="field-label">Full Prompt Preview</label>
+                <div id="full-prompt-preview"></div>
+              </div>
+            </div>
+
+            <div class="side-section">
+              <h3>Negative Prompt</h3>
+              <textarea class="field-textarea" id="neg-prompt" rows="3">
+face asymmetry, eyes asymmetry, deformed eyes, open mouth, cartoon, painting, blurry, low quality</textarea
+              >
+            </div>
+
+            <div class="side-section">
+              <h3>Settings</h3>
+              <label class="field-label">Steps</label>
+              <div class="range-row">
+                <input
+                  type="range"
+                  id="img-steps"
+                  min="10"
+                  max="60"
+                  step="1"
+                  value="22"
+                />
+                <span class="range-val" id="img-steps-val">22</span>
+              </div>
+              <label class="field-label">Guidance Scale (CFG)</label>
+              <div class="range-row">
+                <input
+                  type="range"
+                  id="img-cfg"
+                  min="1"
+                  max="20"
+                  step="0.5"
+                  value="7"
+                />
+                <span class="range-val" id="img-cfg-val">7.0</span>
+              </div>
+              <label class="field-label">Width</label>
+              <select class="field-select" id="img-width">
+                <option value="512">512</option>
+                <option value="768">768</option>
+                <option value="1024" selected>1024</option>
+              </select>
+              <label class="field-label" style="margin-top: 6px">Height</label>
+              <select class="field-select" id="img-height">
+                <option value="512">512</option>
+                <option value="768">768</option>
+                <option value="1024" selected>1024</option>
+              </select>
+              <label class="field-label" style="margin-top: 6px">
+                <input
+                  type="checkbox"
+                  id="img-upscale"
+                  checked
+                  style="accent-color: var(--accent); margin-right: 4px"
+                />
+                4× Upscale (4x-UltraSharp)
+              </label>
+            </div>
+
+            <div class="generate-actions">
+              <button
+                class="btn btn-primary"
+                id="generate-btn"
+                style="flex: 1"
+                disabled
+              >
+                Generate
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── Media Screen ── -->
+        <div class="screen" id="screen-media">
+          <div class="media-header">
+            <h2>🖼️ Media</h2>
+            <button class="btn btn-ghost btn-sm" id="media-refresh-btn">
+              ⟳ Refresh
+            </button>
+          </div>
+          <div id="media-grid">
+            <div class="empty-state">
+              <div class="es-icon">🖼️</div>
+              <p>No images yet. Generate something!</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── Train Screen ── -->
+        <div class="screen" id="screen-train">
+          <h2>🎓 Fine-tune with QLoRA</h2>
+          <p class="hint">
+            Attach LoRA adapters to a base LLM and train on a JSONL chat
+            dataset. Designed for 6 GB VRAM using 4-bit quantization and
+            gradient checkpointing.
+          </p>
+
+          <div class="train-grid">
+            <div class="train-card">
+              <h3>Base Model</h3>
+              <div class="path-row">
+                <input
+                  class="field-input"
+                  id="train-model-path"
+                  type="text"
+                  placeholder="models/qwen3.5-2b"
+                />
+                <button class="btn btn-ghost btn-sm" id="train-model-browse">
+                  Browse
+                </button>
+              </div>
+            </div>
+
+            <div class="train-card">
+              <h3>Dataset (JSONL)</h3>
+              <div class="path-row">
+                <input
+                  class="field-input"
+                  id="train-dataset-path"
+                  type="text"
+                  placeholder="datasets/train.jsonl"
+                />
+                <button class="btn btn-ghost btn-sm" id="train-dataset-browse">
+                  Browse
+                </button>
+              </div>
+            </div>
+
+            <div class="train-card">
+              <h3>Output Adapter Directory</h3>
+              <div class="path-row">
+                <input
+                  class="field-input"
+                  id="train-output-path"
+                  type="text"
+                  placeholder="models/lavely-lm-lora"
+                  value="models/lavely-lm-lora"
+                />
+                <button class="btn btn-ghost btn-sm" id="train-output-browse">
+                  Browse
+                </button>
+              </div>
+            </div>
+
+            <div class="train-card">
+              <h3>Precision</h3>
+              <label class="field-label">
+                <input
+                  type="checkbox"
+                  id="train-use-4bit"
+                  checked
+                  style="accent-color: var(--accent); margin-right: 4px"
+                />
+                4-bit quantization (NF4) — required for 6 GB VRAM
+              </label>
+            </div>
+          </div>
+
+          <div class="train-card">
+            <h3>Hyperparameters</h3>
+            <div
+              style="
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 14px;
+              "
+            >
+              <div>
+                <label class="field-label">Epochs</label>
+                <input
+                  class="field-input"
+                  id="train-epochs"
+                  type="number"
+                  min="1"
+                  max="50"
+                  value="3"
+                />
+              </div>
+              <div>
+                <label class="field-label">Batch Size</label>
+                <input
+                  class="field-input"
+                  id="train-batch"
+                  type="number"
+                  min="1"
+                  max="16"
+                  value="1"
+                />
+              </div>
+              <div>
+                <label class="field-label">Grad Accum</label>
+                <input
+                  class="field-input"
+                  id="train-grad-accum"
+                  type="number"
+                  min="1"
+                  max="64"
+                  value="8"
+                />
+              </div>
+              <div>
+                <label class="field-label">Learning Rate</label>
+                <input
+                  class="field-input"
+                  id="train-lr"
+                  type="number"
+                  step="0.00001"
+                  min="0.000001"
+                  max="0.01"
+                  value="0.0002"
+                />
+              </div>
+              <div>
+                <label class="field-label">LoRA Rank</label>
+                <input
+                  class="field-input"
+                  id="train-lora-r"
+                  type="number"
+                  min="1"
+                  max="128"
+                  value="16"
+                />
+              </div>
+              <div>
+                <label class="field-label">LoRA Alpha</label>
+                <input
+                  class="field-input"
+                  id="train-lora-alpha"
+                  type="number"
+                  min="1"
+                  max="256"
+                  value="32"
+                />
+              </div>
+              <div>
+                <label class="field-label">LoRA Dropout</label>
+                <input
+                  class="field-input"
+                  id="train-lora-dropout"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  max="1"
+                  value="0.05"
+                />
+              </div>
+              <div>
+                <label class="field-label">Max Seq Len</label>
+                <input
+                  class="field-input"
+                  id="train-max-seq"
+                  type="number"
+                  min="64"
+                  max="8192"
+                  value="2048"
+                />
+              </div>
+              <div>
+                <label class="field-label">Logging Steps</label>
+                <input
+                  class="field-input"
+                  id="train-log-steps"
+                  type="number"
+                  min="1"
+                  max="500"
+                  value="5"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div class="train-actions">
+            <button class="btn btn-primary" id="train-start-btn">
+              ▶ Start Training
+            </button>
+            <button class="btn btn-ghost" id="train-stop-btn" disabled>
+              ■ Stop
+            </button>
+            <button class="btn btn-ghost" id="train-merge-btn">
+              🔗 Merge Adapter
+            </button>
+          </div>
+
+          <div class="train-progress">
+            <h3
+              style="
+                font-size: 13px;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+              "
+            >
+              Progress
+            </h3>
+            <div class="bar-wrap">
+              <div class="bar-fill" id="train-bar"></div>
+            </div>
+            <div class="metrics">
+              <div class="metric">
+                <div class="label">Step</div>
+                <div class="value" id="train-m-step">—</div>
+              </div>
+              <div class="metric">
+                <div class="label">Epoch</div>
+                <div class="value" id="train-m-epoch">—</div>
+              </div>
+              <div class="metric">
+                <div class="label">Loss</div>
+                <div class="value" id="train-m-loss">—</div>
+              </div>
+              <div class="metric">
+                <div class="label">LR</div>
+                <div class="value" id="train-m-lr">—</div>
+              </div>
+            </div>
+          </div>
+
+          <div id="train-log"></div>
+        </div>
+
+        <!-- ── GPU Screen ── -->
+        <div class="screen" id="screen-gpu">
+          <div class="gpu-header">
+            <h2>🖥️ GPU Information</h2>
+            <button class="btn btn-ghost btn-sm" id="gpu-refresh-btn">
+              ⟳ Refresh
+            </button>
+          </div>
+          <div id="gpu-content">
+            <div class="empty-state">
+              <div class="es-icon">🖥️</div>
+              <p>Click refresh to load GPU details.</p>
+            </div>
+          </div>
+          <div id="gpu-raw"></div>
+        </div>
+
+        <!-- ── Models Screen ── -->
+        <div class="screen" id="screen-models">
+          <div class="models-header">
+            <h2>📦 Models</h2>
+            <button class="btn btn-ghost btn-sm" id="run-diagnostics-btn">
+              🩺 Run Diagnostics
+            </button>
+          </div>
+          <div id="models-list"></div>
+
+          <div style="margin-top: 20px">
+            <div class="download-form">
+              <h3>Download from Hugging Face</h3>
+              <div class="form-row">
+                <input
+                  class="field-input"
+                  id="dl-repo-id"
+                  type="text"
+                  placeholder="e.g. Qwen/Qwen2.5-3B"
+                />
+                <select class="field-select" id="dl-type" style="width: 100px">
+                  <option value="llm">LLM</option>
+                  <option value="image">Image</option>
+                </select>
+              </div>
+              <div class="form-row">
+                <input
+                  class="field-input"
+                  id="dl-target-dir"
+                  type="text"
+                  placeholder="Target folder name (in models/)"
+                />
+                <button class="btn btn-ghost btn-sm" id="dl-browse-btn">
+                  Browse
+                </button>
+              </div>
+              <button class="btn btn-primary" id="dl-start-btn">
+                ⬇ Download
+              </button>
+              <div id="download-log"></div>
+              <div id="diagnostics-log"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Lightbox -->
+    <div id="lightbox">
+      <button id="lightbox-close">✕</button>
+      <img id="lightbox-img" alt="Preview" />
+      <div id="lightbox-actions"></div>
+    </div>
+
+    <!-- Toast container -->
+    <div id="toast-container"></div>
+
+    <script src="../../dist/renderer/app.js"></script>
+  </body>
+</html>

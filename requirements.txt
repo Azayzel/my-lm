@@ -1,0 +1,12 @@
+torch
+torchvision
+transformers
+accelerate
+bitsandbytes
+peft
+datasets
+diffusers
+safetensors
+xformers
+huggingface_hub
+hf_transfer

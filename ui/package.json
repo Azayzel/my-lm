@@ -1,0 +1,64 @@
+{
+  "name": "lavely-ui",
+  "version": "1.0.0",
+  "description": "Lavely LLM & Image Generation UI",
+  "main": "dist/main/main.js",
+  "scripts": {
+    "dev": "concurrently \"webpack --config webpack.renderer.js --watch\" \"tsc -p tsconfig.main.json --watch\" \"electron .\"",
+    "build:main": "tsc -p tsconfig.main.json",
+    "build:renderer": "webpack --config webpack.renderer.js",
+    "build": "npm run build:main && npm run build:renderer",
+    "start": "npm run build && electron .",
+    "package": "npm run build && electron-builder"
+  },
+  "keywords": [],
+  "author": "Lavely",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/marked": "^6.0.0",
+    "concurrently": "^8.0.0",
+    "electron": "^31.0.0",
+    "electron-builder": "^24.0.0",
+    "ts-loader": "^9.0.0",
+    "typescript": "^5.4.0",
+    "webpack": "^5.0.0",
+    "webpack-cli": "^5.0.0"
+  },
+  "dependencies": {
+    "marked": "^12.0.0",
+    "node-fetch": "^3.3.2"
+  },
+  "build": {
+    "appId": "com.lavely.ui",
+    "productName": "Lavely",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "node_modules/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../scripts",
+        "to": "scripts"
+      },
+      {
+        "from": "../models",
+        "to": "models"
+      },
+      {
+        "from": "../outputs",
+        "to": "outputs"
+      }
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "linux": {
+      "target": "AppImage"
+    }
+  }
+}
