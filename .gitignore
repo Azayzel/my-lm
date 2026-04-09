@@ -1,0 +1,14 @@
+.venv/
+models/
+outputs/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+llama.cpp/
+*.gguf
+node_modules/
+
+.claude/
