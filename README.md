@@ -94,47 +94,53 @@ All Python processes are long-lived subprocesses spawned by the Electron main pr
 
 ## 🚀 Quick start
 
-### 1. Python environment
+**Prerequisites:** Python 3.10+, Node.js 18+, NVIDIA GPU with CUDA drivers, `nvidia-smi` on PATH.
 
-```bash
-cd MyLm
-python -m venv .venv
-.venv\Scripts\activate      # Windows
-# source .venv/bin/activate  # macOS/Linux
+### One-shot setup
 
-pip install --upgrade pip
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
-pip install transformers accelerate bitsandbytes peft datasets
-pip install diffusers safetensors compel
-pip install ultralytics spandrel spandrel_extra_arches
-pip install huggingface_hub hf_transfer
-```
+**Windows:**
 
-### 2. Download the default models
-
-From the Electron app, open **Models → Model Catalog** and click **Install** on:
-
-- **Qwen 2.5 3B Instruct** (~6 GB) — default chat LLM
-- **RealVisXL V4.0** (~6.5 GB) — default image model
-- **4x-UltraSharp** (~70 MB) — upscaler
-- **YOLOv8n Face** (~6 MB) — face detailer
-- **TAESDXL** (~10 MB) — streaming preview decoder
-
-Or from the CLI:
-
-```bash
-python -c "from huggingface_hub import snapshot_download; snapshot_download('Qwen/Qwen2.5-3B-Instruct', local_dir='models/qwen2.5-3b')"
-python -c "from huggingface_hub import snapshot_download; snapshot_download('SG161222/RealVisXL_V4.0', local_dir='models/realvisxl-v4')"
-```
-
-### 3. Launch the UI
-
-```bash
+```powershell
+git clone https://github.com/yourname/mylm.git
+cd mylm
+setup.bat
 cd ui
-npm install
-npm run build
 npm start
 ```
+
+**Linux/macOS:**
+
+```bash
+git clone https://github.com/yourname/mylm.git
+cd mylm
+./setup.sh
+cd ui
+npm start
+```
+
+The setup script:
+
+1. Creates `.venv` (Python virtual environment)
+2. Installs PyTorch 2.5.1 + CUDA 12.1 wheels (with a post-install CUDA sanity check)
+3. Installs all pinned dependencies from [requirements.txt](requirements.txt)
+4. Uninstalls `xformers` if a transitive dep pulled it in (incompatible with torch 2.5.x)
+5. Runs `npm install` and `npm run build` in `ui/`
+
+### First run — model download wizard
+
+On first launch, MyLm checks for the essential models. If any are missing, a welcome modal appears with an **Install All** button that downloads:
+
+| Model                | Size    | Purpose                             |
+| -------------------- | ------- | ----------------------------------- |
+| Qwen 2.5 3B Instruct | ~6 GB   | Default chat LLM                    |
+| RealVisXL V4.0       | ~6.5 GB | Photorealistic SDXL image model     |
+| 4x-UltraSharp        | ~70 MB  | 4× image upscaler                   |
+| YOLOv8n Face         | ~6 MB   | Face detector for Face Fix          |
+| TAESDXL              | ~10 MB  | Tiny VAE for streaming previews     |
+
+**Total: ~13 GB** on a typical broadband connection (~10–20 minutes).
+
+You can also install them individually, skip the modal, or open the full **Model Catalog** under the Models screen for more options (Llama 3.2, Phi-3.5, Juggernaut XL, DreamShaper, SDXL Base/Refiner, etc.). The catalog is GPU-aware and hides models that won't fit your VRAM by default.
 
 ### Development mode (hot reload)
 

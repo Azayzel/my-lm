@@ -1167,6 +1167,96 @@
         gap: 10px;
       }
 
+      /* ── Essentials (first-run) modal ──────────────────────────── */
+      #essentials-modal {
+        display: none;
+        position: fixed;
+        inset: 0;
+        z-index: 260;
+        align-items: center;
+        justify-content: center;
+      }
+      #essentials-modal.open {
+        display: flex;
+      }
+      #essentials-modal .modal-backdrop {
+        position: absolute;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.75);
+      }
+      #essentials-modal .modal-box {
+        position: relative;
+        background: var(--bg1);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 26px 28px;
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+        box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6);
+      }
+      #essentials-modal .modal-title {
+        font-size: 18px;
+        font-weight: 700;
+        background: linear-gradient(135deg, var(--accent), var(--accent2));
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+      }
+      #essentials-modal .modal-body {
+        font-size: 12px;
+        color: var(--text2);
+        line-height: 1.5;
+      }
+      #essentials-modal .modal-actions {
+        display: flex;
+        gap: 10px;
+        justify-content: flex-end;
+      }
+      #essentials-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .ess-row {
+        display: grid;
+        grid-template-columns: 24px 1fr auto auto;
+        gap: 10px;
+        align-items: center;
+        padding: 10px 12px;
+        background: var(--bg0);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+      }
+      .ess-row.installed {
+        border-color: var(--success);
+      }
+      .ess-row .ess-icon {
+        font-size: 16px;
+      }
+      .ess-row .ess-info .ess-name {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--text);
+      }
+      .ess-row .ess-info .ess-sub {
+        font-size: 10px;
+        color: var(--text3);
+      }
+      .ess-row .ess-size {
+        font-size: 10px;
+        color: var(--text3);
+      }
+      .ess-row .ess-btn {
+        padding: 5px 12px;
+        font-size: 11px;
+        min-width: 80px;
+      }
+      .ess-row .ess-btn.done {
+        background: transparent;
+        color: var(--success);
+        cursor: default;
+      }
+
       /* ── Input modal ───────────────────────────────────────────── */
       #input-modal {
         display: none;
@@ -2024,6 +2114,28 @@ face asymmetry, eyes asymmetry, deformed eyes, open mouth, cartoon, painting, bl
               <div id="diagnostics-log"></div>
             </div>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- First-run / Essentials modal -->
+    <div id="essentials-modal">
+      <div class="modal-backdrop"></div>
+      <div class="modal-box" style="min-width: 560px; max-width: 640px">
+        <div class="modal-title">👋 Welcome to MyLm</div>
+        <div class="modal-body" id="essentials-intro">
+          Before you can chat or generate images, you need a handful of model
+          files. The recommended set is about <strong>13 GB</strong> and runs
+          well on a 6 GB GPU. You can install them one at a time or all at once.
+        </div>
+        <div id="essentials-list"></div>
+        <div class="modal-actions">
+          <button class="btn btn-ghost btn-sm" id="essentials-close-btn">
+            Skip for now
+          </button>
+          <button class="btn btn-primary btn-sm" id="essentials-install-all">
+            ⬇ Install All
+          </button>
         </div>
       </div>
     </div>

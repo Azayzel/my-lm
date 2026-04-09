@@ -1370,5 +1370,213 @@ deletePromptBtn.addEventListener("click", async () => {
 
 refreshSavedPrompts();
 
+// ─────────────────────────────────────────────────────────────────────────────
+// FIRST-RUN ESSENTIALS MODAL
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface Essential {
+  id: string;
+  name: string;
+  sub: string;
+  icon: string;
+  sizeGb: number;
+  repoId: string;
+  targetDir: string;
+  type: string;
+}
+
+const ESSENTIALS: Essential[] = [
+  {
+    id: "qwen25-3b",
+    name: "Qwen 2.5 3B Instruct",
+    sub: "Default chat LLM",
+    icon: "💬",
+    sizeGb: 6.2,
+    repoId: "Qwen/Qwen2.5-3B-Instruct",
+    targetDir: "qwen2.5-3b",
+    type: "llm",
+  },
+  {
+    id: "realvis-v4",
+    name: "RealVisXL V4.0",
+    sub: "Photorealistic SDXL image model",
+    icon: "🎨",
+    sizeGb: 6.5,
+    repoId: "SG161222/RealVisXL_V4.0",
+    targetDir: "realvisxl-v4",
+    type: "image",
+  },
+  {
+    id: "4x-ultrasharp",
+    name: "4x-UltraSharp",
+    sub: "High-quality 4× upscaler",
+    icon: "📈",
+    sizeGb: 0.07,
+    repoId: "lokCX/4x-Ultrasharp",
+    targetDir: "upscalers",
+    type: "other",
+  },
+  {
+    id: "yolov8-face",
+    name: "YOLOv8n Face",
+    sub: "Face detector for Face Fix pass",
+    icon: "👤",
+    sizeGb: 0.01,
+    repoId: "Bingsu/adetailer",
+    targetDir: "face_detector",
+    type: "other",
+  },
+  {
+    id: "taesdxl",
+    name: "TAESDXL",
+    sub: "Tiny VAE for streaming latent previews",
+    icon: "👁",
+    sizeGb: 0.01,
+    repoId: "madebyollin/taesdxl",
+    targetDir: "taesdxl",
+    type: "other",
+  },
+];
+
+const essentialsModal = $<HTMLElement>("#essentials-modal");
+const essentialsList = $<HTMLElement>("#essentials-list");
+const essentialsCloseBtn = $<HTMLButtonElement>("#essentials-close-btn");
+const essentialsInstallAllBtn = $<HTMLButtonElement>("#essentials-install-all");
+
+interface EssentialState extends Essential {
+  installed: boolean;
+  downloading: boolean;
+  done: boolean;
+}
+
+const essentialState: Record<string, EssentialState> = {};
+
+async function checkEssentialsInstalled(): Promise<string[]> {
+  const installed = await window.lavely.models.list();
+  const installedNames = new Set(installed.map((m) => m.name.toLowerCase()));
+  return ESSENTIALS.filter((e) => !installedNames.has(e.targetDir.toLowerCase())).map(
+    (e) => e.id,
+  );
+}
+
+function renderEssentialRow(e: EssentialState): HTMLElement {
+  const row = document.createElement("div");
+  row.className = "ess-row" + (e.installed || e.done ? " installed" : "");
+  row.id = `ess-row-${e.id}`;
+
+  const info = document.createElement("div");
+  info.className = "ess-info";
+  info.innerHTML = `<div class="ess-name">${e.name}</div><div class="ess-sub">${e.sub}</div>`;
+
+  const iconEl = document.createElement("div");
+  iconEl.className = "ess-icon";
+  iconEl.textContent = e.icon;
+
+  const sizeEl = document.createElement("div");
+  sizeEl.className = "ess-size";
+  sizeEl.textContent = `${e.sizeGb.toFixed(2)} GB`;
+
+  const btn = document.createElement("button");
+  btn.className = "btn btn-ghost btn-sm ess-btn";
+  if (e.installed || e.done) {
+    btn.textContent = "✓ Installed";
+    btn.classList.add("done");
+    btn.disabled = true;
+  } else if (e.downloading) {
+    btn.textContent = "Downloading…";
+    btn.disabled = true;
+  } else {
+    btn.textContent = "⬇ Install";
+    btn.addEventListener("click", () => installEssential(e.id));
+  }
+
+  row.appendChild(iconEl);
+  row.appendChild(info);
+  row.appendChild(sizeEl);
+  row.appendChild(btn);
+  return row;
+}
+
+function renderEssentials() {
+  essentialsList.innerHTML = "";
+  for (const e of ESSENTIALS) {
+    const state = essentialState[e.id];
+    if (!state) continue;
+    essentialsList.appendChild(renderEssentialRow(state));
+  }
+
+  const allDone = Object.values(essentialState).every(
+    (s) => s.installed || s.done,
+  );
+  essentialsInstallAllBtn.textContent = allDone ? "All set ✓" : "⬇ Install All";
+  essentialsInstallAllBtn.disabled = allDone;
+}
+
+async function installEssential(id: string): Promise<void> {
+  const state = essentialState[id];
+  if (!state || state.installed || state.done || state.downloading) return;
+  state.downloading = true;
+  renderEssentials();
+
+  return new Promise((resolve) => {
+    const dispose = window.lavely.models.onDownloadEvent((msg: BridgeMsg) => {
+      // We can't easily filter events per-download since the backend isn't
+      // tagged, but since we install sequentially this is safe.
+      if (msg.type === "done") {
+        state.downloading = false;
+        state.done = true;
+        state.installed = true;
+        renderEssentials();
+        dispose();
+        resolve();
+      } else if (msg.type === "error") {
+        state.downloading = false;
+        renderEssentials();
+        showToast(`Install failed: ${msg["message"]}`, "error", 6000);
+        dispose();
+        resolve();
+      }
+    });
+    window.lavely.models.download(state.repoId, state.targetDir, state.type);
+  });
+}
+
+async function installAllEssentials() {
+  essentialsInstallAllBtn.disabled = true;
+  for (const e of ESSENTIALS) {
+    if (!essentialState[e.id]?.installed && !essentialState[e.id]?.done) {
+      await installEssential(e.id);
+    }
+  }
+  renderEssentials();
+}
+
+async function openEssentialsModal(force = false) {
+  const missing = await checkEssentialsInstalled();
+  if (missing.length === 0 && !force) return;
+  for (const e of ESSENTIALS) {
+    essentialState[e.id] = {
+      ...e,
+      installed: !missing.includes(e.id),
+      downloading: false,
+      done: false,
+    };
+  }
+  renderEssentials();
+  essentialsModal.classList.add("open");
+}
+
+essentialsCloseBtn.addEventListener("click", () => {
+  essentialsModal.classList.remove("open");
+});
+essentialsInstallAllBtn.addEventListener("click", installAllEssentials);
+
+// Run the check on first paint (but not if models are already in place)
+setTimeout(() => {
+  openEssentialsModal(false).catch(() => {
+    /* ignore */
+  });
+}, 400);
+
 // ─── Init ─────────────────────────────────────────────────────────────────────
 activateScreen("chat");
