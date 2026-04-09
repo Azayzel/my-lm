@@ -10,6 +10,7 @@ from compel.embeddings_provider import EmbeddingsProviderMulti
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from upscaler import load_upscaler, upscale_image
+from face_detailer import run_face_detailer
 
 # Compel 2.3.1 bug: EmbeddingsProviderMulti (used for SDXL) is missing `empty_z`,
 # which breaks internal padding when positive/negative prompts differ in length.
@@ -25,8 +26,13 @@ if not hasattr(EmbeddingsProviderMulti, "empty_z"):
 ROOT = Path(__file__).resolve().parent.parent
 MODEL_DIR = ROOT / "models" / "realvisxl-v4"
 UPSCALER_PATH = ROOT / "models" / "upscalers" / "4x-UltraSharp.pth"
+FACE_DETECTOR_PATH = ROOT / "models" / "face_detector" / "face_yolov8n.pt"
 OUTPUT_DIR = ROOT / "outputs"
 OUTPUT_DIR.mkdir(exist_ok=True)
+
+# Toggle the face detailer pass here
+DO_FACE_FIX = True
+FACE_FIX_STRENGTH = 0.45
 
 pipe = StableDiffusionXLPipeline.from_pretrained(
     str(MODEL_DIR),
@@ -90,6 +96,28 @@ ts = datetime.now().strftime("%Y%m%d_%H%M%S")
 out_path = OUTPUT_DIR / f"image_{ts}.png"
 image.save(out_path)
 print(f"Base image saved to {out_path}")
+
+# Face detailer pass — detect faces and refine each with img2img
+if DO_FACE_FIX and FACE_DETECTOR_PATH.exists():
+    print("Running face detailer...")
+    pipe.text_encoder.to("cuda")
+    pipe.text_encoder_2.to("cuda")
+    image = run_face_detailer(
+        image=image,
+        base_pipe=pipe,
+        detector_path=FACE_DETECTOR_PATH,
+        prompt=prompt,
+        negative_prompt=negative_prompt,
+        denoise=FACE_FIX_STRENGTH,
+        steps=22,
+        guidance=5.5,
+        compel=compel,
+        on_progress=lambda m: print(m.get("text", "")),
+    )
+    fx_path = OUTPUT_DIR / f"image_{ts}_face.png"
+    image.save(fx_path)
+    print(f"Face-fixed image saved to {fx_path}")
+    torch.cuda.empty_cache()
 
 # Free SDXL VRAM before upscaling
 del pipe, compel, conditioning, pooled, negative_conditioning, negative_pooled

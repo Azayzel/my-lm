@@ -96,6 +96,7 @@ const messagesEl = $("#messages");
 const chatInput = $<HTMLTextAreaElement>("#chat-input");
 const chatSendBtn = $<HTMLButtonElement>("#chat-send-btn");
 const llmLoadBtn = $("#llm-load-btn");
+const llmStopBtn = $("#llm-stop-btn");
 const llmUnloadBtn = $("#llm-unload-btn");
 const llmDot = $("#llm-dot");
 
@@ -113,6 +114,7 @@ bindRange("temperature", "temperature-val", 2);
 bindRange("top-p", "top-p-val", 2);
 
 function updateLLMUI() {
+  const llmActive = state.llmLoading || state.llmReady || state.streaming;
   llmDot.className =
     "dot" + (state.llmLoading ? " loading" : state.llmReady ? " on" : "");
   chatSendBtn.disabled = !state.llmReady || state.streaming;
@@ -122,7 +124,8 @@ function updateLLMUI() {
       ? "Reload"
       : "Load Model";
   (llmLoadBtn as HTMLElement).style.opacity = state.llmLoading ? "0.5" : "1";
-  llmUnloadBtn.style.display = state.llmReady ? "" : "none";
+  llmStopBtn.style.display = llmActive ? "" : "none";
+  llmUnloadBtn.style.display = state.llmReady && !state.streaming ? "" : "none";
 }
 
 updateLLMUI();
@@ -161,12 +164,20 @@ window.lavely.llm.onEvent((msg: BridgeMsg) => {
   } else if (msg.type === "error") {
     state.streaming = false;
     state.llmLoading = false;
+    if (currentAssistantBubble) {
+      currentAssistantBubble.classList.remove("typing-cursor");
+      currentAssistantBubble = null;
+    }
     updateLLMUI();
     showToast(`LLM error: ${msg["message"]}`, "error", 6000);
   } else if (msg.type === "exit") {
     state.llmReady = false;
     state.llmLoading = false;
     state.streaming = false;
+    if (currentAssistantBubble) {
+      currentAssistantBubble.classList.remove("typing-cursor");
+      currentAssistantBubble = null;
+    }
     updateLLMUI();
   }
 });
@@ -199,9 +210,24 @@ llmLoadBtn.addEventListener("click", async () => {
   }
 });
 
+llmStopBtn.addEventListener("click", async () => {
+  await window.lavely.llm.stop();
+  state.llmReady = false;
+  state.llmLoading = false;
+  state.streaming = false;
+  if (currentAssistantBubble) {
+    currentAssistantBubble.classList.remove("typing-cursor");
+    currentAssistantBubble = null;
+  }
+  updateLLMUI();
+  showToast("LLM process stopped", "info");
+});
+
 llmUnloadBtn.addEventListener("click", async () => {
   await window.lavely.llm.stop();
   state.llmReady = false;
+  state.llmLoading = false;
+  state.streaming = false;
   updateLLMUI();
   showToast("LLM unloaded", "info");
 });
@@ -264,15 +290,64 @@ $("#clear-chat-btn").addEventListener("click", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const imgLoadBtn = $("#img-load-btn");
+const imgStopBtn = $("#img-stop-btn");
 const imgUnloadBtn = $("#img-unload-btn");
 const imgDot = $("#img-dot");
 const generateBtn = $<HTMLButtonElement>("#generate-btn");
+const generateStopBtn = $("#generate-stop-btn");
 const genImage = $<HTMLImageElement>("#gen-image");
 const imagePlaceholder = $("#image-placeholder");
 const progressWrap = $("#progress-bar-wrap");
 const progressFill = $("#progress-fill") as HTMLElement;
 const progressSteps = $("#progress-steps");
 const progressLabelText = $("#progress-label-text");
+const progressEta = $("#progress-eta");
+
+// ETA tracking — stores (step, timestamp_ms) for the last few steps so we can
+// compute a moving-average step duration.
+const etaState = {
+  startTs: 0,
+  stepTimes: [] as { step: number; ts: number }[],
+};
+
+function resetEta() {
+  etaState.startTs = Date.now();
+  etaState.stepTimes = [];
+  progressEta.textContent = "";
+}
+
+function formatDuration(seconds: number): string {
+  if (!isFinite(seconds) || seconds < 0) return "—";
+  const s = Math.round(seconds);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  if (m < 60) return `${m}m ${r}s`;
+  const h = Math.floor(m / 60);
+  return `${h}h ${m % 60}m`;
+}
+
+function updateEta(step: number, total: number) {
+  const now = Date.now();
+  etaState.stepTimes.push({ step, ts: now });
+  // Keep the last 6 samples for a stable moving average
+  if (etaState.stepTimes.length > 6) etaState.stepTimes.shift();
+
+  if (etaState.stepTimes.length < 2 || step >= total) {
+    progressEta.textContent = "";
+    return;
+  }
+
+  const first = etaState.stepTimes[0];
+  const last = etaState.stepTimes[etaState.stepTimes.length - 1];
+  const stepsDone = last.step - first.step;
+  const elapsed = (last.ts - first.ts) / 1000; // seconds
+  if (stepsDone <= 0 || elapsed <= 0) return;
+
+  const secPerStep = elapsed / stepsDone;
+  const remaining = (total - step) * secPerStep;
+  progressEta.textContent = `~${formatDuration(remaining)} left`;
+}
 
 // Prompt builder live preview
 function buildPrompt(): string {
@@ -295,8 +370,11 @@ updatePromptPreview();
 // Range sliders for image
 bindRange("img-steps", "img-steps-val", 0);
 bindRange("img-cfg", "img-cfg-val", 1);
+bindRange("img-face-fix-strength", "img-face-fix-strength-val", 2);
 
 function updateImageUI() {
+  const imageActive =
+    state.imageLoading || state.imageReady || state.generating;
   imgDot.className =
     "dot" + (state.imageLoading ? " loading" : state.imageReady ? " on" : "");
   generateBtn.disabled = !state.imageReady || state.generating;
@@ -306,7 +384,10 @@ function updateImageUI() {
       ? "Reload"
       : "Load Model";
   (imgLoadBtn as HTMLElement).style.opacity = state.imageLoading ? "0.5" : "1";
-  imgUnloadBtn.style.display = state.imageReady ? "" : "none";
+  imgStopBtn.style.display = imageActive ? "" : "none";
+  imgUnloadBtn.style.display =
+    state.imageReady && !state.generating ? "" : "none";
+  generateStopBtn.style.display = state.generating ? "" : "none";
 }
 
 updateImageUI();
@@ -329,11 +410,13 @@ window.lavely.image.onEvent((msg: BridgeMsg) => {
     const label = (msg["message"] as string | undefined) ?? "Generating…";
     progressLabelText.textContent = label;
     progressWrap.style.display = "flex";
+    updateEta(step, total);
   } else if (msg.type === "done") {
     state.generating = false;
     updateImageUI();
     progressWrap.style.display = "none";
     progressFill.style.width = "0%";
+    progressEta.textContent = "";
     if (msg.path) {
       showImage(msg.path as string);
       // Save to history
@@ -353,11 +436,14 @@ window.lavely.image.onEvent((msg: BridgeMsg) => {
     state.imageLoading = false;
     updateImageUI();
     progressWrap.style.display = "none";
+    progressFill.style.width = "0%";
     showToast(`Image error: ${msg["message"]}`, "error", 6000);
   } else if (msg.type === "exit") {
     state.imageReady = false;
     state.imageLoading = false;
     state.generating = false;
+    progressWrap.style.display = "none";
+    progressFill.style.width = "0%";
     updateImageUI();
   }
 });
@@ -380,11 +466,37 @@ imgLoadBtn.addEventListener("click", async () => {
   }
 });
 
+imgStopBtn.addEventListener("click", async () => {
+  await window.lavely.image.stop();
+  state.imageReady = false;
+  state.imageLoading = false;
+  state.generating = false;
+  progressWrap.style.display = "none";
+  progressFill.style.width = "0%";
+  updateImageUI();
+  showToast("Image process stopped", "info");
+});
+
 imgUnloadBtn.addEventListener("click", async () => {
   await window.lavely.image.stop();
   state.imageReady = false;
+  state.imageLoading = false;
+  state.generating = false;
+  progressWrap.style.display = "none";
+  progressFill.style.width = "0%";
   updateImageUI();
   showToast("Image model unloaded", "info");
+});
+
+generateStopBtn.addEventListener("click", async () => {
+  await window.lavely.image.stop();
+  state.imageReady = false;
+  state.imageLoading = false;
+  state.generating = false;
+  progressWrap.style.display = "none";
+  progressFill.style.width = "0%";
+  updateImageUI();
+  showToast("Generation stopped", "info");
 });
 
 generateBtn.addEventListener("click", async () => {
@@ -396,6 +508,7 @@ generateBtn.addEventListener("click", async () => {
   progressSteps.textContent = "0 / 0";
   progressLabelText.textContent = "Starting…";
   progressWrap.style.display = "flex";
+  resetEta();
 
   const request = {
     prompt: buildPrompt(),
@@ -405,6 +518,10 @@ generateBtn.addEventListener("click", async () => {
     width: parseInt(($("#img-width") as HTMLSelectElement).value),
     height: parseInt(($("#img-height") as HTMLSelectElement).value),
     upscale: ($("#img-upscale") as HTMLInputElement).checked,
+    face_fix: ($("#img-face-fix") as HTMLInputElement).checked,
+    face_fix_strength: parseFloat(
+      ($("#img-face-fix-strength") as HTMLInputElement).value,
+    ),
   };
 
   const res = await window.lavely.image.generate(request);
@@ -885,6 +1002,130 @@ window.lavely.train.onEvent((msg: BridgeMsg) => {
       break;
   }
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SAVED PROMPTS
+// ─────────────────────────────────────────────────────────────────────────────
+
+const savedPromptsSelect = $<HTMLSelectElement>("#saved-prompts-select");
+const savePromptBtn = $<HTMLButtonElement>("#save-prompt-btn");
+const loadPromptBtn = $<HTMLButtonElement>("#load-prompt-btn");
+const deletePromptBtn = $<HTMLButtonElement>("#delete-prompt-btn");
+
+let savedPromptsCache: SavedPrompt[] = [];
+
+async function refreshSavedPrompts() {
+  savedPromptsCache = await window.lavely.prompts.list();
+  const prev = savedPromptsSelect.value;
+  savedPromptsSelect.innerHTML =
+    '<option value="">— select a saved prompt —</option>';
+  for (const p of savedPromptsCache) {
+    const opt = document.createElement("option");
+    opt.value = p.id;
+    opt.textContent = p.name;
+    savedPromptsSelect.appendChild(opt);
+  }
+  // restore selection if still present
+  if (savedPromptsCache.some((p) => p.id === prev)) {
+    savedPromptsSelect.value = prev;
+  }
+}
+
+savePromptBtn.addEventListener("click", async () => {
+  const name = prompt("Name this prompt:");
+  if (!name || !name.trim()) return;
+  const entry = {
+    name: name.trim(),
+    prompt: buildPrompt(),
+    negative_prompt: ($("#neg-prompt") as HTMLTextAreaElement).value,
+    params: {
+      head: ($("#pb-head") as HTMLInputElement).value,
+      name: ($("#pb-name") as HTMLInputElement).value,
+      position: ($("#pb-position") as HTMLInputElement).value,
+      weights: ($("#pb-weights") as HTMLTextAreaElement).value,
+      steps: parseInt(($("#img-steps") as HTMLInputElement).value),
+      guidance: parseFloat(($("#img-cfg") as HTMLInputElement).value),
+      width: parseInt(($("#img-width") as HTMLSelectElement).value),
+      height: parseInt(($("#img-height") as HTMLSelectElement).value),
+      upscale: ($("#img-upscale") as HTMLInputElement).checked,
+      face_fix: ($("#img-face-fix") as HTMLInputElement).checked,
+      face_fix_strength: parseFloat(
+        ($("#img-face-fix-strength") as HTMLInputElement).value,
+      ),
+    },
+  };
+  await window.lavely.prompts.save(entry);
+  await refreshSavedPrompts();
+  showToast(`Saved prompt "${name}" ✓`, "success");
+});
+
+loadPromptBtn.addEventListener("click", () => {
+  const id = savedPromptsSelect.value;
+  if (!id) {
+    showToast("Select a prompt first", "info");
+    return;
+  }
+  const entry = savedPromptsCache.find((p) => p.id === id);
+  if (!entry) return;
+
+  const params = (entry.params ?? {}) as Record<string, unknown>;
+  const setInput = (sel: string, value: unknown) => {
+    const el = $<HTMLInputElement | HTMLTextAreaElement>(sel);
+    if (value !== undefined && value !== null) el.value = String(value);
+  };
+  const setCheck = (sel: string, value: unknown) => {
+    const el = $<HTMLInputElement>(sel);
+    if (typeof value === "boolean") el.checked = value;
+  };
+
+  // Restore prompt builder fields if present, else dump the raw prompt into the head
+  if (params["head"] !== undefined) {
+    setInput("#pb-head", params["head"]);
+    setInput("#pb-name", params["name"]);
+    setInput("#pb-position", params["position"]);
+    setInput("#pb-weights", params["weights"]);
+  } else {
+    setInput("#pb-head", entry.prompt);
+    setInput("#pb-name", "");
+    setInput("#pb-position", "");
+    setInput("#pb-weights", "");
+  }
+  setInput("#neg-prompt", entry.negative_prompt);
+
+  if (params["steps"] !== undefined) setInput("#img-steps", params["steps"]);
+  if (params["guidance"] !== undefined)
+    setInput("#img-cfg", params["guidance"]);
+  if (params["width"] !== undefined) setInput("#img-width", params["width"]);
+  if (params["height"] !== undefined) setInput("#img-height", params["height"]);
+  setCheck("#img-upscale", params["upscale"]);
+  setCheck("#img-face-fix", params["face_fix"]);
+  if (params["face_fix_strength"] !== undefined) {
+    setInput("#img-face-fix-strength", params["face_fix_strength"]);
+  }
+
+  // Trigger range displays + prompt preview
+  ["#img-steps", "#img-cfg", "#img-face-fix-strength"].forEach((sel) =>
+    $(sel).dispatchEvent(new Event("input")),
+  );
+  updatePromptPreview();
+  showToast(`Loaded "${entry.name}"`, "success");
+});
+
+deletePromptBtn.addEventListener("click", async () => {
+  const id = savedPromptsSelect.value;
+  if (!id) {
+    showToast("Select a prompt first", "info");
+    return;
+  }
+  const entry = savedPromptsCache.find((p) => p.id === id);
+  if (!entry) return;
+  if (!confirm(`Delete prompt "${entry.name}"?`)) return;
+  await window.lavely.prompts.delete(id);
+  await refreshSavedPrompts();
+  showToast("Prompt deleted", "info");
+});
+
+refreshSavedPrompts();
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 activateScreen("chat");

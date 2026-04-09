@@ -30,6 +30,17 @@ interface LavelyAPI {
     clear(): Promise<void>;
     delete(id: string): Promise<boolean>;
   };
+  prompts: {
+    list(): Promise<SavedPrompt[]>;
+    save(
+      entry: Omit<SavedPrompt, "id" | "timestamp">,
+    ): Promise<SavedPrompt>;
+    update(
+      id: string,
+      patch: Partial<SavedPrompt>,
+    ): Promise<SavedPrompt | null>;
+    delete(id: string): Promise<boolean>;
+  };
   media: {
     list(): Promise<MediaFile[]>;
     delete(path: string): Promise<{ ok: boolean; error?: string }>;
@@ -141,6 +152,15 @@ interface HistoryEntry {
   messages?: { role: string; content: string }[];
   prompt?: string;
   imagePath?: string;
+  params?: Record<string, unknown>;
+}
+
+interface SavedPrompt {
+  id: string;
+  name: string;
+  prompt: string;
+  negative_prompt: string;
+  timestamp: number;
   params?: Record<string, unknown>;
 }
 

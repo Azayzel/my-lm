@@ -13,6 +13,7 @@ export class ImageBridge {
     private upscalerPath: string,
     private outputDir: string,
     private python: string = "python",
+    private faceDetectorPath: string = "",
   ) {}
 
   isRunning() {
@@ -27,13 +28,16 @@ export class ImageBridge {
   ): Promise<{ ok: boolean; message?: string; error?: string }> {
     return new Promise((resolve) => {
       const bridge = path.join(this.scriptsDir, "image_bridge.py");
-      this.proc = spawn(
-        this.python,
-        [bridge, this.modelDir, this.upscalerPath, this.outputDir],
-        {
-          stdio: ["pipe", "pipe", "pipe"],
-        },
-      );
+      const args = [
+        bridge,
+        this.modelDir,
+        this.upscalerPath,
+        this.outputDir,
+      ];
+      if (this.faceDetectorPath) args.push(this.faceDetectorPath);
+      this.proc = spawn(this.python, args, {
+        stdio: ["pipe", "pipe", "pipe"],
+      });
       this._running = true;
 
       const rl = readline.createInterface({ input: this.proc.stdout! });

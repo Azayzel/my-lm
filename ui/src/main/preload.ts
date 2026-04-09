@@ -44,6 +44,15 @@ contextBridge.exposeInMainWorld("lavely", {
     delete: (id: string) => ipcRenderer.invoke("history:delete", id),
   },
 
+  // Saved prompts
+  prompts: {
+    list: () => ipcRenderer.invoke("prompts:list"),
+    save: (entry: object) => ipcRenderer.invoke("prompts:save", entry),
+    update: (id: string, patch: object) =>
+      ipcRenderer.invoke("prompts:update", id, patch),
+    delete: (id: string) => ipcRenderer.invoke("prompts:delete", id),
+  },
+
   // Media
   media: {
     list: () => ipcRenderer.invoke("media:list"),

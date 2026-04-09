@@ -8,7 +8,7 @@ Each line is one of:
   {"type": "error", "message": "..."}
 
 Usage:
-  python image_bridge.py <model_dir> <upscaler_path> <output_dir>
+  python image_bridge.py <model_dir> <upscaler_path> <output_dir> [face_detector_path]
   then write JSON to stdin:
   {
     "prompt": "...",
@@ -18,6 +18,8 @@ Usage:
     "width": 1024,
     "height": 1024,
     "upscale": true,
+    "face_fix": true,
+    "face_fix_strength": 0.45,
     "filename": "optional_name"
   }
 """
@@ -96,7 +98,14 @@ def make_progress_callback(total_steps: int):
     return callback
 
 
-def run_generation(pipe, compel, request: dict, upscaler_path: str, output_dir: str):
+def run_generation(
+    pipe,
+    compel,
+    request: dict,
+    upscaler_path: str,
+    output_dir: str,
+    face_detector_path: str = "",
+):
     import torch
     from upscaler import load_upscaler, upscale_image
 
@@ -110,6 +119,8 @@ def run_generation(pipe, compel, request: dict, upscaler_path: str, output_dir: 
     width = request.get("width", 1024)
     height = request.get("height", 1024)
     do_upscale = request.get("upscale", True)
+    do_face_fix = request.get("face_fix", False)
+    face_fix_strength = float(request.get("face_fix_strength", 0.45))
     filename = request.get("filename", None)
 
     # Pass both prompts as a list — compel batches them and auto-pads to the
@@ -144,6 +155,35 @@ def run_generation(pipe, compel, request: dict, upscaler_path: str, output_dir: 
 
     result_path = str(out_path)
 
+    # Face detailer pass — detect faces and refine each with img2img
+    if do_face_fix and face_detector_path and os.path.isfile(face_detector_path):
+        try:
+            emit({"type": "status", "message": "Running face detailer..."})
+            # Text encoders need to be on GPU for the img2img prompt encoding
+            pipe.text_encoder.to("cuda")
+            pipe.text_encoder_2.to("cuda")
+            from face_detailer import run_face_detailer
+
+            image = run_face_detailer(
+                image=image,
+                base_pipe=pipe,
+                detector_path=face_detector_path,
+                prompt=prompt,
+                negative_prompt=negative_prompt,
+                denoise=face_fix_strength,
+                steps=max(20, steps),
+                guidance=max(5.0, guidance - 1.5),
+                compel=compel,
+                on_progress=lambda m: emit(m),
+            )
+            # Save the face-fixed version
+            fx_path = Path(output_dir) / f"{base_name}_face.png"
+            image.save(fx_path)
+            result_path = str(fx_path)
+            torch.cuda.empty_cache()
+        except Exception as e:
+            emit({"type": "log", "text": f"Face detailer failed: {e}"})
+
     if do_upscale and os.path.isfile(upscaler_path):
         emit({"type": "progress", "step": steps, "total": steps, "message": "Upscaling..."})
         torch.cuda.empty_cache()
@@ -173,12 +213,13 @@ def run_generation(pipe, compel, request: dict, upscaler_path: str, output_dir: 
 
 def main():
     if len(sys.argv) < 4:
-        emit({"type": "error", "message": "Usage: image_bridge.py <model_dir> <upscaler_path> <output_dir>"})
+        emit({"type": "error", "message": "Usage: image_bridge.py <model_dir> <upscaler_path> <output_dir> [face_detector_path]"})
         sys.exit(1)
 
     model_dir = sys.argv[1]
     upscaler_path = sys.argv[2]
     output_dir = sys.argv[3]
+    face_detector_path = sys.argv[4] if len(sys.argv) > 4 else ""
 
     Path(output_dir).mkdir(parents=True, exist_ok=True)
 
@@ -202,7 +243,14 @@ def main():
             continue
 
         try:
-            run_generation(pipe, compel, request, upscaler_path, output_dir)
+            run_generation(
+                pipe,
+                compel,
+                request,
+                upscaler_path,
+                output_dir,
+                face_detector_path,
+            )
         except Exception as e:
             emit({"type": "error", "message": str(e)})
 

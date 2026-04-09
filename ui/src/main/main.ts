@@ -7,6 +7,7 @@ import { ImageBridge } from "./imageBridge";
 import { HistoryStore } from "./historyStore";
 import { ModelManager } from "./modelManager";
 import { TrainBridge, TrainConfig } from "./trainBridge";
+import { PromptStore, SavedPrompt } from "./promptStore";
 
 // ─── Paths ────────────────────────────────────────────────────────────────────
 const ROOT = path.resolve(__dirname, "..", "..", ".."); // ui/../.. => repo root
@@ -16,6 +17,11 @@ const OUTPUTS_DIR = path.join(ROOT, "outputs");
 const LLM_MODEL_DIR = path.join(MODELS_DIR, "qwen3.5-2b");
 const IMAGE_MODEL_DIR = path.join(MODELS_DIR, "realvisxl-v4");
 const UPSCALER_PATH = path.join(MODELS_DIR, "upscalers", "4x-UltraSharp.pth");
+const FACE_DETECTOR_PATH = path.join(
+  MODELS_DIR,
+  "face_detector",
+  "face_yolov8n.pt",
+);
 
 // Resolve the Python executable: prefer the project .venv, then fall back to PATH
 function resolvePython(): string {
@@ -41,6 +47,9 @@ let imageBridge: ImageBridge | null = null;
 let trainBridge: TrainBridge | null = null;
 const historyStore = new HistoryStore(
   path.join(app.getPath("userData"), "history.json"),
+);
+const promptStore = new PromptStore(
+  path.join(app.getPath("userData"), "prompts.json"),
 );
 const modelManager = new ModelManager(SCRIPTS_DIR, MODELS_DIR);
 
@@ -172,6 +181,7 @@ ipcMain.handle("image:start", async (_e, modelPath?: string) => {
     UPSCALER_PATH,
     OUTPUTS_DIR,
     PYTHON,
+    FACE_DETECTOR_PATH,
   );
   return imageBridge.start((msg) => {
     mainWindow?.webContents.send("image:event", msg);
@@ -210,6 +220,22 @@ ipcMain.handle("history:clear", async () => historyStore.clear());
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ipcMain.handle("history:delete", async (_e: any, id: string) =>
   historyStore.delete(id),
+);
+
+// ─── Saved Prompts ───────────────────────────────────────────────────────────
+ipcMain.handle("prompts:list", async () => promptStore.getAll());
+ipcMain.handle(
+  "prompts:save",
+  async (_e, entry: Omit<SavedPrompt, "id" | "timestamp">) =>
+    promptStore.save(entry),
+);
+ipcMain.handle(
+  "prompts:update",
+  async (_e, id: string, patch: Partial<SavedPrompt>) =>
+    promptStore.update(id, patch),
+);
+ipcMain.handle("prompts:delete", async (_e, id: string) =>
+  promptStore.delete(id),
 );
 
 // ─── Media ───────────────────────────────────────────────────────────────────

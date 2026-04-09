@@ -1209,6 +1209,13 @@
                 Load Model
               </div>
               <div
+                class="btn btn-danger btn-block btn-sm"
+                id="llm-stop-btn"
+                style="display: none"
+              >
+                Stop
+              </div>
+              <div
                 class="btn btn-ghost btn-block btn-sm"
                 id="llm-unload-btn"
                 style="display: none"
@@ -1291,7 +1298,10 @@ You are Lavely-LM, a helpful AI assistant.</textarea
             <div id="progress-bar-wrap">
               <div class="progress-label">
                 <span id="progress-label-text">Generating…</span>
-                <span id="progress-steps">0 / 0</span>
+                <span>
+                  <span id="progress-eta" style="color: var(--text3); margin-right: 8px"></span>
+                  <span id="progress-steps">0 / 0</span>
+                </span>
               </div>
               <div class="progress-track">
                 <div class="progress-fill" id="progress-fill"></div>
@@ -1305,6 +1315,13 @@ You are Lavely-LM, a helpful AI assistant.</textarea
               <h3>Image Model</h3>
               <div class="btn btn-primary btn-block" id="img-load-btn">
                 Load Model
+              </div>
+              <div
+                class="btn btn-danger btn-block btn-sm"
+                id="img-stop-btn"
+                style="display: none"
+              >
+                Stop
               </div>
               <div
                 class="btn btn-ghost btn-block btn-sm"
@@ -1417,6 +1434,63 @@ face asymmetry, eyes asymmetry, deformed eyes, open mouth, cartoon, painting, bl
                 />
                 4× Upscale (4x-UltraSharp)
               </label>
+              <label class="field-label" style="margin-top: 6px">
+                <input
+                  type="checkbox"
+                  id="img-face-fix"
+                  style="accent-color: var(--accent); margin-right: 4px"
+                />
+                Face Fix (ADetailer-style)
+              </label>
+              <label class="field-label" style="margin-top: 4px">
+                Face Fix Strength
+              </label>
+              <div class="range-row">
+                <input
+                  type="range"
+                  id="img-face-fix-strength"
+                  min="0.2"
+                  max="0.75"
+                  step="0.05"
+                  value="0.45"
+                />
+                <span class="range-val" id="img-face-fix-strength-val"
+                  >0.45</span
+                >
+              </div>
+            </div>
+
+            <div class="side-section">
+              <h3>
+                Saved Prompts
+                <button
+                  class="btn btn-ghost btn-sm"
+                  id="save-prompt-btn"
+                  style="float: right; padding: 2px 8px; font-size: 11px"
+                  title="Save current prompt"
+                >
+                  + Save
+                </button>
+              </h3>
+              <select class="field-select" id="saved-prompts-select">
+                <option value="">— select a saved prompt —</option>
+              </select>
+              <div style="display: flex; gap: 6px; margin-top: 6px">
+                <button
+                  class="btn btn-ghost btn-sm"
+                  id="load-prompt-btn"
+                  style="flex: 1"
+                >
+                  Load
+                </button>
+                <button
+                  class="btn btn-ghost btn-sm"
+                  id="delete-prompt-btn"
+                  style="flex: 1"
+                >
+                  Delete
+                </button>
+              </div>
             </div>
 
             <div class="generate-actions">
@@ -1427,6 +1501,13 @@ face asymmetry, eyes asymmetry, deformed eyes, open mouth, cartoon, painting, bl
                 disabled
               >
                 Generate
+              </button>
+              <button
+                class="btn btn-danger"
+                id="generate-stop-btn"
+                style="display: none"
+              >
+                Stop
               </button>
             </div>
           </div>
