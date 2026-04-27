@@ -1,32 +1,107 @@
+<div align="center">
+
 # My-LM
 
-> **My LM** — a play on "LLM". A local, all-in-one playground for running, training, and generating with open-weight models on a single GPU. Dark-mode Electron UI, Python backends, no cloud.
+**A local, all-in-one playground for running, fine-tuning, and generating with open-weight models — on a single GPU.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![Node 18+](https://img.shields.io/badge/node-18+-green.svg)](https://nodejs.org/)
+[![Electron](https://img.shields.io/badge/Electron-31-47848F?logo=electron&logoColor=white)](https://www.electronjs.org/)
+[![PyTorch 2.5 + CUDA 12.1](https://img.shields.io/badge/PyTorch-2.5%20%7C%20CUDA%2012.1-EE4C2C?logo=pytorch&logoColor=white)](https://pytorch.org/)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
-Designed around modest GPUs (built and tested on a **6 GB RTX 2060**) but scales up gracefully. Runs a chat LLM, an SDXL image generator, a QLoRA fine-tuning loop, and a curated model catalog — all from one window.
+[**Install**](#-quick-start) · [**Docs**](docs/) · [**Features**](#-what-can-it-do) · [**Architecture**](docs/architecture.md) · [**Contributing**](CONTRIBUTING.md)
+
+<img src="docs/assets/my-lm-install-model-prompt.png" alt="My-LM first-run experience" width="900" />
+
+</div>
 
 ---
 
-## Features
+## What is My-LM?
 
-- **Chat** — local LLM inference (Qwen 2.5 / Llama 3.2 / Phi-3.5) with streaming, sampling controls, and per-session history.
-- **Image generation** — SDXL with `compel` long-prompt support, live latent previews via TAESDXL, ETA, prompt builder, saved presets, 4× ESRGAN upscale, ADetailer-style face fix.
-- **BookMind RAG** — semantic book recommendations via MongoDB Atlas `$vectorSearch` with optional grounded LLM explanations.
-- **Training** — QLoRA fine-tuning (4-bit NF4) with live loss/epoch metrics and one-click adapter merge.
-- **Model catalog** — curated, GPU-aware model picker that hides anything that won't fit your VRAM.
-- **System** — GPU dashboard (`nvidia-smi` + `torch.cuda`), diagnostics, sane defaults.
+My-LM is a **dark-mode Electron app + Python backend** that bundles four things you usually have to run separately:
 
-See [docs/features.md](docs/features.md) for the full breakdown.
+- 💬 a **chat LLM** (Qwen 2.5 / Llama 3.2 / Phi-3.5) with streaming and a system prompt
+- 🎨 an **SDXL image generator** with live latent previews, a face detailer, and 4× upscaling
+- 📚 a **RAG book recommender** (BookMind) over MongoDB Atlas Vector Search
+- 🧠 a **QLoRA fine-tuning loop** with live loss/epoch metrics and one-click adapter merge
+
+Everything runs **locally**, on your hardware. No tokens, no rate limits, no data leaving your machine.
+
+Designed and tested on a **6 GB RTX 2060** — every feature has been tuned to fit that VRAM budget — but it scales up gracefully. Works on Windows, Linux, and (CPU/MPS) macOS.
 
 ---
 
-## Quick start
+## ✨ What can it do?
 
-**Prerequisites:** Python 3.10+, Node.js 18+, NVIDIA GPU with CUDA drivers, `nvidia-smi` on PATH.
+<table>
+<tr>
+<td width="50%" valign="top">
+
+### 🎨 Generate images with live previews
+SDXL with `compel` long-prompt support, structured prompt builder, ETA, saved prompt presets, and **streaming latent previews** every 2 steps via TAESDXL — watch the image materialize in real time.
+
+<img src="docs/assets/realtime_streaming_generation.png" alt="Live latent preview during SDXL generation" />
+
+</td>
+<td width="50%" valign="top">
+
+### 💬 First-class onboarding
+Welcome modal detects which essential models you're missing (~13 GB total) and offers one-click install from Hugging Face. No CLI gymnastics, no `git lfs` errors.
+
+<img src="docs/assets/gen_image_1.png" alt="Prompt builder on the Generate screen" />
+
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
+### 📚 BookMind — RAG book recommender
+Semantic search over a MongoDB Atlas library using `$vectorSearch` on 384-dim embeddings, optionally blended with a user's stored taste vector, with **grounded LLM explanations** that can only mention books from the retrieved set.
+
+<img src="docs/assets/book_recommender.png" alt="BookMind RAG recommender screen" />
+
+</td>
+<td width="50%" valign="top">
+
+### 🧠 QLoRA fine-tuning, no notebook required
+4-bit quantized base model + LoRA adapters, trainable on 6 GB VRAM. Live loss/epoch/LR metrics streamed from a `TrainerCallback`. **Merge Adapter** button fuses the LoRA back into the base model in one click.
+
+<img src="docs/assets/train.png" alt="QLoRA fine-tuning screen" />
+
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
+### 📦 GPU-aware model catalog
+Curated picks across LLMs, SDXL/SD1.5, upscalers, face detectors, and preview VAEs. Detects your VRAM and **hides anything that won't fit** by default. Manual HF repo download with progress for everything else.
+
+<img src="docs/assets/manage_models.png" alt="Model catalog" />
+
+</td>
+<td width="50%" valign="top">
+
+### 🖥 GPU dashboard + diagnostics
+Live `torch.cuda` info plus `nvidia-smi` output (memory, temperature, utilization). Sidebar status indicator shows LLM / Image / Python health at a glance.
+
+<img src="docs/assets/gpu_info.png" alt="GPU information screen" />
+
+</td>
+</tr>
+</table>
+
+> **Also includes:** ADetailer-style face fix (YOLOv8 + SDXL img2img on each face, alpha-composited back), 4× ESRGAN upscaling tiled to fit 6 GB VRAM, image gallery with lightbox, persistent chat/prompt history, four standalone CLI tools.
+
+See [docs/features.md](docs/features.md) for the full per-feature breakdown.
+
+---
+
+## 🚀 Quick start
+
+**Prerequisites:** Python 3.10+, Node.js 18+, NVIDIA GPU + CUDA drivers, `nvidia-smi` on PATH.
 
 ```bash
 git clone https://github.com/lavely/my-lm.git
@@ -42,13 +117,13 @@ setup.bat
 cd ui && npm start
 ```
 
-The setup script creates a `.venv`, installs CUDA-matched PyTorch wheels, installs Python dependencies, and builds the Electron UI. On first launch the app prompts you to download essential models (~13 GB).
+The setup script creates `.venv`, installs CUDA-matched PyTorch wheels, installs the `mylm` package in editable mode, and builds the Electron UI. On first launch you'll see the **Install Models** modal pictured above.
 
-For configuration (BookMind / MongoDB), copy `.env.example` to `.env` and fill in your values. Full setup details and troubleshooting live in [docs/installation.md](docs/installation.md).
+For BookMind, copy `.env.example` to `.env` and fill in your MongoDB Atlas connection. Full setup details + troubleshooting are in [docs/installation.md](docs/installation.md).
 
 ---
 
-## Documentation
+## 📚 Documentation
 
 | Doc                                          | What's in it                                       |
 | -------------------------------------------- | -------------------------------------------------- |
@@ -63,7 +138,21 @@ For configuration (BookMind / MongoDB), copy `.env.example` to `.env` and fill i
 
 ---
 
-## Project layout
+## 🧱 Architecture at a glance
+
+```text
+┌─ Electron main (Node) ─────────────────────────────────┐
+│   ├─ llmBridge   ──spawns──▶  python scripts/llm_bridge.py
+│   ├─ imageBridge ──spawns──▶  python scripts/image_bridge.py
+│   ├─ trainBridge ──spawns──▶  python scripts/train_bridge.py
+│   ├─ bookBridge  ──spawns──▶  python scripts/book_bridge.py
+│   └─ preload exposes a typed API as window.My
+│                                                         │
+│ Renderer (sandboxed) — vanilla TS + webpack             │
+└─────────────────────────────────────────────────────────┘
+```
+
+Long-lived Python subprocesses exchange newline-delimited JSON over stdin/stdout. Screens can switch freely without interrupting any running operation.
 
 ```text
 my-lm/
@@ -72,22 +161,39 @@ my-lm/
 ├── ui/              Electron app (TypeScript main + renderer)
 ├── tests/           pytest suite
 ├── datasets/        Example training data
-├── docs/            Long-form documentation
-└── .github/         Issue/PR templates and CI workflows
+└── docs/            Long-form documentation
 ```
 
-The `models/` and `outputs/` directories are created on first run and are gitignored — they hold multi-GB model weights and generated images. See [docs/architecture.md](docs/architecture.md) for the full breakdown.
+`models/` and `outputs/` are runtime-only and gitignored — they hold multi-GB model weights and generated images.
 
 ---
 
-## Contributing
+## 📏 Memory budget on 6 GB
 
-PRs welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) first — it covers the dev loop, coding conventions, and how to run linters/tests locally. Be excellent to each other ([Code of Conduct](CODE_OF_CONDUCT.md)).
+The app is designed so no single step blows out VRAM:
 
-Found a bug or have an idea? [Open an issue](https://github.com/lavely/my-lm/issues/new/choose).
+- SDXL base pass uses `enable_model_cpu_offload()` to stream components on/off GPU
+- Text encoders move to GPU only for `compel` prompt encoding, then back to CPU
+- Face detailer **reuses the base pipe's weights** — no second SDXL load
+- 4× upscale runs **tiled at 384 px** with 32 px overlap
+- Training uses **4-bit NF4 quantization** + gradient checkpointing
+
+> **Don't run chat + image + training simultaneously** — they each want the whole GPU.
 
 ---
 
-## License
+## 🤝 Contributing
+
+PRs welcome! [CONTRIBUTING.md](CONTRIBUTING.md) covers the dev loop, coding conventions, and how to run linters/tests locally. Be excellent to each other — see the [Code of Conduct](CODE_OF_CONDUCT.md).
+
+Found a bug or have an idea? [Open an issue](https://github.com/lavely/my-lm/issues/new/choose) · Have a question? [Start a discussion](https://github.com/lavely/my-lm/discussions).
+
+---
+
+## 📝 License
 
 [MIT](LICENSE) © 2026 Josh Lavely
+
+<div align="center">
+<sub>Built for tinkerers with modest GPUs and big curiosity.</sub>
+</div>
