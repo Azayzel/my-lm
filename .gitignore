@@ -1,14 +1,47 @@
+# Python
 .venv/
-models/
-outputs/
+venv/
+env/
 __pycache__/
 *.pyc
 *.pyo
+*.pyd
 *.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Node / Electron
+node_modules/
 dist/
 build/
+release/
+*.log
+npm-debug.log*
+
+# Local model weights and runtime artefacts (never commit — multi-GB)
+models/
+outputs/
 llama.cpp/
 *.gguf
-node_modules/
+*.safetensors
+*.pth
+*.onnx
+ui/qwen2.5-3b/
 
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Tooling caches
 .claude/
+
+# Secrets — never commit
+.env
+.env.*
+!.env.example

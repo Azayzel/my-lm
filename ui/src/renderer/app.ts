@@ -1,5 +1,18 @@
-// Lavely UI - Renderer process TypeScript
-// Talks to main process through window.lavely (contextBridge)
+// My UI - Renderer process TypeScript
+// Talks to main process through window.My (contextBridge)
+
+import { marked } from "marked";
+
+// Configure marked for safe, inline-friendly rendering
+marked.setOptions({
+  breaks: true, // Convert \n to <br>
+  gfm: true, // GitHub-flavored markdown (tables, strikethrough, etc.)
+});
+
+/** Render markdown to HTML. Used for LLM chat bubbles and book recommendations. */
+function renderMarkdown(md: string): string {
+  return marked.parse(md) as string;
+}
 
 // ─── State ────────────────────────────────────────────────────────────────────
 const state = {
@@ -159,12 +172,12 @@ document
   });
 
 // ─── Window controls ─────────────────────────────────────────────────────────
-$("#btn-min").addEventListener("click", () => window.lavely.window.minimize());
-$("#btn-max").addEventListener("click", () => window.lavely.window.maximize());
-$("#btn-close").addEventListener("click", () => window.lavely.window.close());
+$("#btn-min").addEventListener("click", () => window.My.window.minimize());
+$("#btn-max").addEventListener("click", () => window.My.window.maximize());
+$("#btn-close").addEventListener("click", () => window.My.window.close());
 
 // ─── App paths ────────────────────────────────────────────────────────────────
-window.lavely.onPaths((paths) => {
+window.My.onPaths((paths) => {
   state.paths = paths;
   // Show which Python is being used in the sidebar tooltip
   const statusEl = document.querySelector(".model-status") as HTMLElement;
@@ -229,7 +242,7 @@ updateLLMUI();
 let currentAssistantBubble: HTMLElement | null = null;
 let currentAssistantText = "";
 
-window.lavely.llm.onEvent((msg: BridgeMsg) => {
+window.My.llm.onEvent((msg: BridgeMsg) => {
   if (msg.type === "status") {
     showToast(msg["message"] as string, "info");
   } else if (msg.type === "ready") {
@@ -245,14 +258,18 @@ window.lavely.llm.onEvent((msg: BridgeMsg) => {
       currentAssistantBubble.classList.add("typing-cursor");
     }
     currentAssistantText += msg.text ?? "";
+    // Show raw text while streaming (fast, no reflow jitter)
     currentAssistantBubble.textContent = currentAssistantText;
     messagesEl.scrollTop = messagesEl.scrollHeight;
   } else if (msg.type === "done") {
     if (currentAssistantBubble) {
       currentAssistantBubble.classList.remove("typing-cursor");
+      // Render final response as markdown
+      currentAssistantBubble.innerHTML = renderMarkdown(currentAssistantText);
       // Save to conversation state
       state.messages.push({ role: "assistant", content: currentAssistantText });
       currentAssistantBubble = null;
+      messagesEl.scrollTop = messagesEl.scrollHeight;
     }
     state.streaming = false;
     updateLLMUI();
@@ -297,7 +314,7 @@ llmLoadBtn.addEventListener("click", async () => {
   if (state.llmLoading) return;
   state.llmLoading = true;
   updateLLMUI();
-  const res = await window.lavely.llm.start();
+  const res = await window.My.llm.start();
   if (!res.ok) {
     state.llmLoading = false;
     updateLLMUI();
@@ -306,7 +323,7 @@ llmLoadBtn.addEventListener("click", async () => {
 });
 
 llmStopBtn.addEventListener("click", async () => {
-  await window.lavely.llm.stop();
+  await window.My.llm.stop();
   state.llmReady = false;
   state.llmLoading = false;
   state.streaming = false;
@@ -319,7 +336,7 @@ llmStopBtn.addEventListener("click", async () => {
 });
 
 llmUnloadBtn.addEventListener("click", async () => {
-  await window.lavely.llm.stop();
+  await window.My.llm.stop();
   state.llmReady = false;
   state.llmLoading = false;
   state.streaming = false;
@@ -348,7 +365,7 @@ async function sendChat() {
     top_p: parseFloat(($("#top-p") as HTMLInputElement).value),
   };
 
-  const res = await window.lavely.llm.chat(request);
+  const res = await window.My.llm.chat(request);
   if (!res.ok) {
     state.streaming = false;
     updateLLMUI();
@@ -448,7 +465,7 @@ function updateEta(step: number, total: number) {
 function buildPrompt(): string {
   const head = ($("#pb-head") as HTMLInputElement).value.trim();
   const name = ($("#pb-name") as HTMLInputElement).value.trim();
-  const position = ($("#pb-position") as HTMLInputElement).value.trim();
+  const position = ($("#pb-position") as HTMLTextAreaElement).value.trim();
   const weights = ($("#pb-weights") as HTMLTextAreaElement).value.trim();
   return [head, name, position, weights].filter(Boolean).join(". ");
 }
@@ -461,6 +478,313 @@ function updatePromptPreview() {
   $(id).addEventListener("input", updatePromptPreview);
 });
 updatePromptPreview();
+
+// ── Face Swap file picker ────────────────────────────────────────────────
+let faceSwapSourcePath = "";
+
+const faceSwapBrowseBtn = $<HTMLButtonElement>("#face-swap-browse");
+const faceSwapFilename = $<HTMLElement>("#face-swap-filename");
+const faceSwapPreview = $<HTMLImageElement>("#face-swap-preview");
+
+faceSwapBrowseBtn.addEventListener("click", async () => {
+  const file = await window.My.dialog.openFile([
+    { name: "Images", extensions: ["png", "jpg", "jpeg", "webp"] },
+  ]);
+  if (!file) return;
+  faceSwapSourcePath = file;
+  // Show just the filename
+  const name = file.replace(/\\/g, "/").split("/").pop() || file;
+  faceSwapFilename.textContent = name;
+  faceSwapFilename.title = file;
+  // Show a tiny circular preview
+  faceSwapPreview.src = `file://${file}`;
+  faceSwapPreview.style.display = "block";
+});
+
+// ── Position/pose presets ────────────────────────────────────────────────
+const POSE_PRESETS = [
+  {
+    name: "crouching",
+    prompt:
+      "Down low with the body close to the ground, knees bent, usually heels up\u2014like you're ready to spring or sneak.",
+  },
+  {
+    name: "squatting",
+    prompt:
+      "Knees bent deep, heels on the ground, body centered \u2014 classic squat position, grounded and balanced.",
+  },
+  {
+    name: "low squat",
+    prompt:
+      "An even deeper squat, often with the hips almost touching the ground \u2014 legs open or closed depending on the mood.",
+  },
+  {
+    name: "legs apart",
+    prompt:
+      "Standing or sitting with a visible gap between the legs\u2014confident, grounded, open stance.",
+  },
+  {
+    name: "wide stance",
+    prompt:
+      "Feet planted far apart \u2014 strong, powerful, like taking up space on purpose.",
+  },
+  {
+    name: "knees up",
+    prompt:
+      "One or both knees pulled upward \u2014 can be seated or lying down, adds energy and focus to the legs.",
+  },
+  {
+    name: "one knee up",
+    prompt:
+      "One knee is raised, often while sitting or leaning\u2014adds dynamic lines and a casual tension.",
+  },
+  {
+    name: "one knee on ground",
+    prompt:
+      "One leg down, one up \u2014 like a proposal pose or a lunge, adds asymmetry and balance.",
+  },
+  {
+    name: "leaning forward",
+    prompt:
+      "Upper body tilts toward the camera or viewer \u2014 can feel inviting, intense, or intimate.",
+  },
+  {
+    name: "hand on knee",
+    prompt:
+      "A hand resting on one or both knees \u2014 adds a touch of purpose or stability to the pose.",
+  },
+  {
+    name: "hand between legs",
+    prompt:
+      "The hand is placed casually between the thighs \u2014 can be flirty, chill, or powerful depending on context.",
+  },
+  {
+    name: "side profile squat",
+    prompt:
+      "Squatting but viewed from the side \u2014 shows off curves, posture, and shape.",
+  },
+  {
+    name: "wall squat",
+    prompt:
+      "Back against the wall, knees bent in a squat \u2014 controlled, strong, and visually sharp.",
+  },
+  {
+    name: "sitting on heels",
+    prompt:
+      "Sitting with butt next to the heels \u2014 neat, centered, and soft in posture.",
+  },
+  {
+    name: "provocative pose",
+    prompt:
+      "A bold, attention-grabbing pose \u2014 body language turned all the way up.",
+  },
+  {
+    name: "suggestive pose",
+    prompt:
+      "Hints without showing \u2014 body placement and angles do the talking.",
+  },
+  {
+    name: "spreading legs",
+    prompt:
+      "Legs moved apart in a deliberate way \u2014 open, bold, and full of energy.",
+  },
+  {
+    name: "legs up",
+    prompt:
+      "Legs are lifted \u2014 whether vertical, playful, or dramatic, it directs all eyes.",
+  },
+  {
+    name: "arched back",
+    prompt:
+      "Spine curves inward, chest forward, hips back \u2014 adds drama, shape, and sensuality.",
+  },
+  {
+    name: "looking back seductively",
+    prompt:
+      "The classic over-the-shoulder glance \u2014 flirty, mysterious, with just enough tease.",
+  },
+  {
+    name: "resting on one knee",
+    prompt:
+      "More relaxed than a full kneel \u2014 balanced and easy, like a soft break in motion.",
+  },
+  {
+    name: "bent over",
+    prompt:
+      "Torso leans forward, hips back \u2014 can be playful, strong, or risqu\u00e9 depending on angle.",
+  },
+  {
+    name: "all fours",
+    prompt:
+      "Hands and knees on the ground \u2014 animalistic, grounded, and very body-focused.",
+  },
+  {
+    name: "lying on stomach",
+    prompt:
+      "Body stretched out on the belly \u2014 soft lines, relaxed, or subtly inviting.",
+  },
+  {
+    name: "lying on side",
+    prompt:
+      "Side-lying, one leg maybe bent \u2014 great for curve emphasis or a dreamy feel.",
+  },
+  {
+    name: "thigh gap",
+    prompt:
+      "When the thighs don't touch \u2014 often highlighted when standing or posing with feet apart.",
+  },
+  {
+    name: "legs together",
+    prompt:
+      "Legs placed closely \u2014 neat, elegant, or reserved, depending on the vibe.",
+  },
+  {
+    name: "hips thrust forward",
+    prompt:
+      "The hips tilt or twist toward the front \u2014 showing off the curve, like a POW moment.",
+  },
+];
+
+const posePresetSelect = $<HTMLSelectElement>("#pb-position-preset");
+const poseAppendBtn = $<HTMLButtonElement>("#pb-position-append");
+const pbPosition = $<HTMLTextAreaElement>("#pb-position");
+
+// Populate the dropdown
+POSE_PRESETS.forEach((p) => {
+  const opt = document.createElement("option");
+  opt.value = p.prompt;
+  opt.textContent = p.name;
+  posePresetSelect.appendChild(opt);
+});
+
+// Double-click on the dropdown → replace the textarea entirely
+posePresetSelect.addEventListener("dblclick", () => {
+  const val = posePresetSelect.value;
+  if (!val) return;
+  pbPosition.value = val;
+  updatePromptPreview();
+});
+
+// "+ Add" button → append to the textarea (comma-separated)
+poseAppendBtn.addEventListener("click", () => {
+  const val = posePresetSelect.value;
+  if (!val) {
+    showToast("Pick a pose first", "info");
+    return;
+  }
+  const current = pbPosition.value.trim();
+  if (current) {
+    pbPosition.value = current + ", " + val;
+  } else {
+    pbPosition.value = val;
+  }
+  updatePromptPreview();
+  // Reset dropdown so they can pick another
+  posePresetSelect.value = "";
+});
+
+// ── Enhance prompt via LLM ──────────────────────────────────────────────
+const enhanceBtn = $<HTMLButtonElement>("#enhance-prompt-btn");
+
+enhanceBtn.addEventListener("click", async () => {
+  if (!state.llmReady) {
+    showToast("Load the LLM first (Chat screen → Load Model)", "error");
+    return;
+  }
+
+  const subject = ($("#pb-name") as HTMLInputElement).value.trim();
+  const position = ($("#pb-position") as HTMLTextAreaElement).value.trim();
+  const weights = ($("#pb-weights") as HTMLTextAreaElement).value.trim();
+
+  if (!subject && !position) {
+    showToast("Fill in at least a subject or action first", "info");
+    return;
+  }
+
+  const raw = [subject, position, weights].filter(Boolean).join(". ");
+
+  enhanceBtn.disabled = true;
+  enhanceBtn.textContent = "Enhancing…";
+
+  // Collect the LLM response into a buffer.
+  // We'll detach the listener once the response is done.
+  let result = "";
+  let finished = false;
+  const dispose = window.My.llm.onEvent((msg: BridgeMsg) => {
+    if (finished) return;
+    if (msg.type === "token") {
+      result += (msg["text"] || "") as string;
+    } else if (msg.type === "done") {
+      finished = true;
+      dispose();
+
+      // Parse the LLM output — it should be an improved prompt string.
+      // Strip any wrapping quotes/backticks the LLM might add.
+      let cleaned = result.trim();
+      cleaned = cleaned.replace(/^["'`]+|["'`]+$/g, "");
+
+      // Split into position/action + style/lighting if the LLM gave us
+      // two clear sections, otherwise put everything into position.
+      const parts = cleaned.split(
+        /\.\s*(?=(?:soft|warm|dramatic|cinematic|natural|golden|studio|ambient|neon|moody|harsh|diffuse|rim|backlit|side|hard|subtle))/i,
+      );
+      if (parts.length >= 2) {
+        ($("#pb-position") as HTMLTextAreaElement).value = parts[0].trim();
+        ($("#pb-weights") as HTMLTextAreaElement).value = parts
+          .slice(1)
+          .join(". ")
+          .trim();
+      } else {
+        ($("#pb-position") as HTMLTextAreaElement).value = cleaned;
+      }
+      updatePromptPreview();
+      enhanceBtn.disabled = false;
+      enhanceBtn.textContent = "✨ Enhance";
+      showToast("Prompt enhanced ✓", "success");
+    } else if (msg.type === "error") {
+      finished = true;
+      dispose();
+      enhanceBtn.disabled = false;
+      enhanceBtn.textContent = "✨ Enhance";
+      showToast("Enhance failed — check LLM", "error");
+    }
+  });
+
+  const systemPrompt =
+    "You are an expert Stable Diffusion XL prompt engineer. " +
+    "The user gives you a rough image idea. Rewrite it as a single, " +
+    "detailed SDXL prompt that adds: specific visual details, body " +
+    "language, facial expression, clothing/material textures, " +
+    "composition, camera angle, and lighting. " +
+    "Output ONLY the improved prompt — no explanation, no headings, " +
+    "no bullet points, no quotes. Keep it under 120 words.";
+
+  await window.My.llm.chat({
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: raw },
+    ],
+    max_tokens: 300,
+    temperature: 0.8,
+  });
+
+  // Timeout: if the LLM never fires "done" within 30s, give up
+  setTimeout(() => {
+    if (!finished) {
+      finished = true;
+      dispose();
+      enhanceBtn.disabled = false;
+      enhanceBtn.textContent = "✨ Enhance";
+      if (result) {
+        ($("#pb-position") as HTMLTextAreaElement).value = result.trim();
+        updatePromptPreview();
+        showToast("Partial enhance applied", "info");
+      } else {
+        showToast("Enhance timed out", "error");
+      }
+    }
+  }, 30000);
+});
 
 // Range sliders for image
 bindRange("img-steps", "img-steps-val", 0);
@@ -488,9 +812,20 @@ function updateImageUI() {
 updateImageUI();
 
 // Subscribe to image events
-window.lavely.image.onEvent((msg: BridgeMsg) => {
+window.My.image.onEvent((msg: BridgeMsg) => {
   if (msg.type === "status") {
-    showToast(msg["message"] as string, "info");
+    const text = msg["message"] as string;
+    // While generating, show status in the progress bar for clear phase feedback
+    if (state.generating) {
+      progressLabelText.textContent = text;
+      progressEta.textContent = "";
+    } else {
+      showToast(text, "info");
+    }
+  } else if (msg.type === "log" && state.generating) {
+    // Face detailer progress etc. → inline in the progress bar
+    const text = String(msg["text"] || "");
+    if (text) progressLabelText.textContent = text;
   } else if (msg.type === "ready") {
     state.imageReady = true;
     state.imageLoading = false;
@@ -522,7 +857,7 @@ window.lavely.image.onEvent((msg: BridgeMsg) => {
     if (msg.path) {
       showImage(msg.path as string);
       // Save to history
-      window.lavely.history.save({
+      window.My.history.save({
         type: "image",
         prompt: buildPrompt(),
         imagePath: msg.path,
@@ -560,7 +895,7 @@ imgLoadBtn.addEventListener("click", async () => {
   if (state.imageLoading) return;
   state.imageLoading = true;
   updateImageUI();
-  const res = await window.lavely.image.start();
+  const res = await window.My.image.start();
   if (!res.ok) {
     state.imageLoading = false;
     updateImageUI();
@@ -569,7 +904,7 @@ imgLoadBtn.addEventListener("click", async () => {
 });
 
 imgStopBtn.addEventListener("click", async () => {
-  await window.lavely.image.stop();
+  await window.My.image.stop();
   state.imageReady = false;
   state.imageLoading = false;
   state.generating = false;
@@ -580,7 +915,7 @@ imgStopBtn.addEventListener("click", async () => {
 });
 
 imgUnloadBtn.addEventListener("click", async () => {
-  await window.lavely.image.stop();
+  await window.My.image.stop();
   state.imageReady = false;
   state.imageLoading = false;
   state.generating = false;
@@ -591,7 +926,7 @@ imgUnloadBtn.addEventListener("click", async () => {
 });
 
 generateStopBtn.addEventListener("click", async () => {
-  await window.lavely.image.stop();
+  await window.My.image.stop();
   state.imageReady = false;
   state.imageLoading = false;
   state.generating = false;
@@ -612,7 +947,8 @@ generateBtn.addEventListener("click", async () => {
   progressWrap.style.display = "flex";
   resetEta();
 
-  const request = {
+  const doFaceSwap = ($("#img-face-swap") as HTMLInputElement).checked;
+  const request: Record<string, unknown> = {
     prompt: buildPrompt(),
     negative_prompt: ($("#neg-prompt") as HTMLTextAreaElement).value,
     steps: parseInt(($("#img-steps") as HTMLInputElement).value),
@@ -624,9 +960,19 @@ generateBtn.addEventListener("click", async () => {
     face_fix_strength: parseFloat(
       ($("#img-face-fix-strength") as HTMLInputElement).value,
     ),
+    face_swap: doFaceSwap,
   };
+  if (doFaceSwap && faceSwapSourcePath) {
+    request.face_swap_source = faceSwapSourcePath;
+  } else if (doFaceSwap && !faceSwapSourcePath) {
+    showToast("Select a face image first (Choose face...)", "error");
+    state.generating = false;
+    updateImageUI();
+    progressWrap.style.display = "none";
+    return;
+  }
 
-  const res = await window.lavely.image.generate(request);
+  const res = await window.My.image.generate(request);
   if (!res.ok) {
     state.generating = false;
     updateImageUI();
@@ -645,17 +991,100 @@ genImage.addEventListener("click", () => {
 // MEDIA SCREEN
 // ─────────────────────────────────────────────────────────────────────────────
 
+let mediaCurrentDir = ""; // "" = outputs root
+
+function renderMediaBreadcrumb() {
+  const bc = $("#media-breadcrumb");
+  bc.innerHTML = "";
+  const parts = ["outputs", ...mediaCurrentDir.split("/").filter(Boolean)];
+
+  parts.forEach((part, i) => {
+    if (i > 0) {
+      const sep = document.createElement("span");
+      sep.className = "sep";
+      sep.textContent = "›";
+      bc.appendChild(sep);
+    }
+    const el = document.createElement("span");
+    el.textContent = part;
+    if (i === parts.length - 1) {
+      el.className = "current";
+    } else {
+      // Clicking a breadcrumb navigates up
+      const targetDir = i === 0 ? "" : parts.slice(1, i + 1).join("/");
+      el.addEventListener("click", () => {
+        mediaCurrentDir = targetDir;
+        loadMediaGrid();
+      });
+    }
+    bc.appendChild(el);
+  });
+}
+
 async function loadMediaGrid() {
   const grid = $("#media-grid");
   grid.innerHTML =
     '<div class="empty-state"><div class="es-icon">⏳</div><p>Loading…</p></div>';
-  const files = await window.lavely.media.list();
-  if (!files.length) {
+  renderMediaBreadcrumb();
+
+  const listing = await window.My.media.list(mediaCurrentDir || undefined);
+  const { folders, files } = listing;
+
+  if (!folders.length && !files.length) {
     grid.innerHTML =
       '<div class="empty-state"><div class="es-icon">🖼️</div><p>No images yet. Generate something!</p></div>';
     return;
   }
   grid.innerHTML = "";
+
+  // Render folders first
+  folders.forEach((folder) => {
+    const card = document.createElement("div");
+    card.className = "folder-card";
+
+    const icon = document.createElement("div");
+    icon.className = "folder-icon";
+    icon.textContent = "📁";
+
+    const name = document.createElement("div");
+    name.className = "folder-name";
+    name.textContent = folder.name;
+
+    const del = document.createElement("button");
+    del.className = "folder-del";
+    del.textContent = "🗑";
+    del.title = "Delete folder";
+    del.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const ok = await askConfirm(
+        "Delete folder?",
+        `"${folder.name}" and all its contents will be permanently deleted.`,
+      );
+      if (!ok) return;
+      const res = await window.My.media.deleteFolder(folder.rel);
+      if (res.ok) {
+        card.remove();
+        showToast(`Folder "${folder.name}" deleted`, "success");
+      } else {
+        showToast(`Error: ${res.error}`, "error");
+      }
+    });
+
+    card.addEventListener("click", () => {
+      mediaCurrentDir = folder.rel;
+      loadMediaGrid();
+    });
+
+    card.appendChild(icon);
+    card.appendChild(name);
+    card.appendChild(del);
+    grid.appendChild(card);
+  });
+
+  // Collect folder names for the "move to" menu
+  const folderNames = folders.map((f) => f.rel);
+
+  // Render image files
   files.forEach((f) => {
     const card = document.createElement("div");
     card.className = "media-card";
@@ -665,8 +1094,8 @@ async function loadMediaGrid() {
         <div class="media-card-name" title="${f.name}">${f.name}</div>
       </div>
       <div class="media-card-actions">
+        <button title="Move to folder" class="mc-move">📂→</button>
         <button title="Open" class="mc-open">↗</button>
-        <button title="Show in folder" class="mc-show">📂</button>
         <button title="Delete" class="mc-del">🗑</button>
       </div>
     `;
@@ -677,16 +1106,36 @@ async function loadMediaGrid() {
       );
     card.querySelector(".mc-open")!.addEventListener("click", (e) => {
       e.stopPropagation();
-      window.lavely.media.open(f.path);
+      window.My.media.open(f.path);
     });
-    card.querySelector(".mc-show")!.addEventListener("click", (e) => {
+    card.querySelector(".mc-move")!.addEventListener("click", async (e) => {
       e.stopPropagation();
-      window.lavely.media.show(f.path);
+      // Build a list of available destinations: parent ("outputs root") + sibling folders
+      const destinations = ["(root)"];
+      if (mediaCurrentDir) destinations.push("(root)");
+      folderNames.forEach((fn) => destinations.push(fn));
+
+      const dest = await askInput(
+        "Move to folder",
+        `Move "${f.name}" to which folder? Type a folder name (existing or new).`,
+        "e.g. favorites",
+        folderNames[0] || "",
+      );
+      if (!dest) return;
+      const targetFolder = dest === "(root)" ? "" : dest;
+      const res = await window.My.media.move(f.path, targetFolder);
+      if (res.ok) {
+        card.remove();
+        showToast(`Moved to ${targetFolder || "root"}`, "success");
+      } else {
+        showToast(`Move failed: ${res.error}`, "error");
+      }
     });
     card.querySelector(".mc-del")!.addEventListener("click", async (e) => {
       e.stopPropagation();
-      if (!confirm(`Delete ${f.name}?`)) return;
-      const res = await window.lavely.media.delete(f.path);
+      const ok = await askConfirm("Delete image?", f.name);
+      if (!ok) return;
+      const res = await window.My.media.delete(f.path);
       if (res.ok) {
         card.remove();
         showToast("Deleted", "success");
@@ -697,6 +1146,23 @@ async function loadMediaGrid() {
 }
 
 $("#media-refresh-btn").addEventListener("click", loadMediaGrid);
+
+$("#media-new-folder-btn").addEventListener("click", async () => {
+  const name = await askInput(
+    "New folder",
+    "Create a subfolder inside the current directory.",
+    "e.g. favorites",
+  );
+  if (!name) return;
+  const fullName = mediaCurrentDir ? `${mediaCurrentDir}/${name}` : name;
+  const res = await window.My.media.createFolder(fullName);
+  if (res.ok) {
+    showToast(`Folder "${name}" created`, "success");
+    loadMediaGrid();
+  } else {
+    showToast(`Error: ${res.error}`, "error");
+  }
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // LIGHTBOX
@@ -711,11 +1177,9 @@ function openLightbox(src: string, filePath: string) {
     <button class="btn btn-ghost btn-sm" id="lb-open">Open in viewer</button>
     <button class="btn btn-ghost btn-sm" id="lb-folder">Show in folder</button>
   `;
-  $("#lb-open").addEventListener("click", () =>
-    window.lavely.media.open(filePath),
-  );
+  $("#lb-open").addEventListener("click", () => window.My.media.open(filePath));
   $("#lb-folder").addEventListener("click", () =>
-    window.lavely.media.show(filePath),
+    window.My.media.show(filePath),
   );
   lb.classList.add("open");
 }
@@ -742,7 +1206,7 @@ const TYPE_ICONS: Record<string, string> = {
 async function loadModelsList() {
   const list = $("#models-list");
   list.innerHTML = "";
-  const models = await window.lavely.models.list();
+  const models = await window.My.models.list();
   if (!models.length) {
     list.innerHTML =
       '<div style="color:var(--text3);font-size:13px;">No models found in models/ directory.</div>';
@@ -779,7 +1243,7 @@ function logDiagnostics(text: string) {
   diagnosticsLog.scrollTop = diagnosticsLog.scrollHeight;
 }
 
-window.lavely.models.onDownloadEvent((msg: BridgeMsg) => {
+window.My.models.onDownloadEvent((msg: BridgeMsg) => {
   if (msg.type === "status") logDownload(`ℹ ${msg["message"]}`);
   else if (msg.type === "done") {
     logDownload(`✓ Done! Saved to ${msg.path}`);
@@ -795,7 +1259,7 @@ window.lavely.models.onDownloadEvent((msg: BridgeMsg) => {
 });
 
 $("#dl-browse-btn").addEventListener("click", async () => {
-  const dir = await window.lavely.dialog.openDir();
+  const dir = await window.My.dialog.openDir();
   if (dir) ($("#dl-target-dir") as HTMLInputElement).value = dir;
 });
 
@@ -815,7 +1279,7 @@ const catalogCategoryFilter = $<HTMLSelectElement>("#catalog-category-filter");
 
 async function detectGpuVram(): Promise<number> {
   try {
-    const info = await window.lavely.system.gpuInfo();
+    const info = await window.My.system.gpuInfo();
     const dev = info.python?.devices?.[0];
     if (dev?.total_memory_gb) return dev.total_memory_gb;
     const sm = info.nvidia?.[0];
@@ -859,7 +1323,9 @@ function renderCatalog() {
     if (e.installed) card.classList.add("installed");
     if (!fits) card.classList.add("too-big");
 
-    const tags = [`<span class="cc-tag cat-${e.category}">${CAT_LABEL[e.category]}</span>`];
+    const tags = [
+      `<span class="cc-tag cat-${e.category}">${CAT_LABEL[e.category]}</span>`,
+    ];
     tags.push(`<span class="cc-tag vram">${e.minVramGb}GB+</span>`);
     if (e.tags.includes("recommended")) {
       tags.push('<span class="cc-tag recommended">Recommended</span>');
@@ -887,9 +1353,15 @@ function renderCatalog() {
       btn.disabled = true;
       btn.textContent = "Downloading…";
       const type =
-        e.category === "llm" ? "llm" : e.category === "image" ? "image" : "other";
-      logDownload(`▶ Installing ${e.name} (${e.repoId}) → models/${e.targetDir}`);
-      await window.lavely.models.download(e.repoId, e.targetDir, type);
+        e.category === "llm"
+          ? "llm"
+          : e.category === "image"
+            ? "image"
+            : "other";
+      logDownload(
+        `▶ Installing ${e.name} (${e.repoId}) → models/${e.targetDir}`,
+      );
+      await window.My.models.download(e.repoId, e.targetDir, type);
     });
 
     catalogGrid.appendChild(card);
@@ -907,18 +1379,20 @@ async function loadCatalog() {
       catalogShowAll.checked = true;
     }
   }
-  catalogState.entries = await window.lavely.catalog.list(catalogState.vramGb || undefined);
+  catalogState.entries = await window.My.catalog.list(
+    catalogState.vramGb || undefined,
+  );
   // Re-fetch with no filter if "show all" — the filtering is done client-side
   // so we can toggle instantly without a round-trip.
   if (catalogShowAll.checked) {
-    catalogState.entries = await window.lavely.catalog.list();
+    catalogState.entries = await window.My.catalog.list();
   }
   renderCatalog();
 }
 
 catalogShowAll.addEventListener("change", async () => {
   // When toggling to "show all", fetch the full list
-  catalogState.entries = await window.lavely.catalog.list(
+  catalogState.entries = await window.My.catalog.list(
     catalogShowAll.checked ? undefined : catalogState.vramGb || undefined,
   );
   renderCatalog();
@@ -926,7 +1400,7 @@ catalogShowAll.addEventListener("change", async () => {
 catalogCategoryFilter.addEventListener("change", renderCatalog);
 
 // Refresh catalog state whenever a download completes (installed flag flips)
-window.lavely.models.onDownloadEvent((msg: BridgeMsg) => {
+window.My.models.onDownloadEvent((msg: BridgeMsg) => {
   if (msg.type === "done") {
     loadCatalog();
   }
@@ -942,13 +1416,13 @@ $("#dl-start-btn").addEventListener("click", async () => {
   }
   dlLog.textContent = "";
   logDownload(`Starting download: ${repoId} → ${targetDir}`);
-  await window.lavely.models.download(repoId, targetDir, type);
+  await window.My.models.download(repoId, targetDir, type);
 });
 
 $("#run-diagnostics-btn").addEventListener("click", async () => {
   diagnosticsLog.textContent = "";
   logDiagnostics("Running environment diagnostics...");
-  const info = await window.lavely.system.diagnostics();
+  const info = await window.My.system.diagnostics();
   if (!info.ok) {
     logDiagnostics("✗ Diagnostics failed");
     if (info.stderr) logDiagnostics(`stderr: ${info.stderr}`);
@@ -984,7 +1458,7 @@ async function loadGpuInfo() {
     '<div class="empty-state"><div class="es-icon">⏳</div><p>Loading GPU information…</p></div>';
   gpuRaw.textContent = "";
 
-  const data = await window.lavely.system.gpuInfo();
+  const data = await window.My.system.gpuInfo();
 
   const cards: string[] = [];
   const py = data.python;
@@ -1076,15 +1550,15 @@ function setTrainRunning(running: boolean) {
 
 // Browse handlers — directory for model/output, file for dataset
 $("#train-model-browse").addEventListener("click", async () => {
-  const dir = await window.lavely.dialog.openDir();
+  const dir = await window.My.dialog.openDir();
   if (dir) ($("#train-model-path") as HTMLInputElement).value = dir;
 });
 $("#train-output-browse").addEventListener("click", async () => {
-  const dir = await window.lavely.dialog.openDir();
+  const dir = await window.My.dialog.openDir();
   if (dir) ($("#train-output-path") as HTMLInputElement).value = dir;
 });
 $("#train-dataset-browse").addEventListener("click", async () => {
-  const file = await window.lavely.dialog.openFile([
+  const file = await window.My.dialog.openFile([
     { name: "Dataset", extensions: ["jsonl", "json"] },
     { name: "All Files", extensions: ["*"] },
   ]);
@@ -1092,7 +1566,7 @@ $("#train-dataset-browse").addEventListener("click", async () => {
 });
 
 // Prefill model path from app paths
-window.lavely.onPaths((paths) => {
+window.My.onPaths((paths) => {
   const modelInput = $<HTMLInputElement>("#train-model-path");
   if (!modelInput.value && paths.llmModel) modelInput.value = paths.llmModel;
 });
@@ -1104,7 +1578,7 @@ function readTrainConfig(): TrainConfig {
   return {
     model_path: v("train-model-path").trim(),
     dataset_path: v("train-dataset-path").trim(),
-    output_dir: v("train-output-path").trim() || "models/lavely-lm-lora",
+    output_dir: v("train-output-path").trim() || "models/My-lm-lora",
     epochs: i("train-epochs"),
     batch_size: i("train-batch"),
     grad_accum: i("train-grad-accum"),
@@ -1134,7 +1608,7 @@ trainStartBtn.addEventListener("click", async () => {
   trainLogLine(JSON.stringify(cfg, null, 2));
 
   setTrainRunning(true);
-  const res = await window.lavely.train.start(cfg);
+  const res = await window.My.train.start(cfg);
   if (!res.ok) {
     trainLogLine(`✗ Failed to start: ${res.error}`, "err");
     showToast(`Training failed to start: ${res.error}`, "error", 6000);
@@ -1143,7 +1617,7 @@ trainStartBtn.addEventListener("click", async () => {
 });
 
 trainStopBtn.addEventListener("click", async () => {
-  await window.lavely.train.stop();
+  await window.My.train.stop();
   trainLogLine("■ Training stopped by user", "err");
   setTrainRunning(false);
 });
@@ -1156,7 +1630,7 @@ trainMergeBtn.addEventListener("click", async () => {
   }
   const mergedPath = cfg.output_dir + "-merged";
   trainLogLine(`Merging adapter from ${cfg.output_dir} into ${mergedPath}...`);
-  const res = await window.lavely.train.merge(
+  const res = await window.My.train.merge(
     cfg.model_path,
     cfg.output_dir,
     mergedPath,
@@ -1170,7 +1644,7 @@ trainMergeBtn.addEventListener("click", async () => {
   }
 });
 
-window.lavely.train.onEvent((msg: BridgeMsg) => {
+window.My.train.onEvent((msg: BridgeMsg) => {
   switch (msg.type) {
     case "status":
       trainLogLine(`ℹ ${msg["message"]}`);
@@ -1250,7 +1724,7 @@ const deletePromptBtn = $<HTMLButtonElement>("#delete-prompt-btn");
 let savedPromptsCache: SavedPrompt[] = [];
 
 async function refreshSavedPrompts() {
-  savedPromptsCache = await window.lavely.prompts.list();
+  savedPromptsCache = await window.My.prompts.list();
   const prev = savedPromptsSelect.value;
   savedPromptsSelect.innerHTML =
     '<option value="">— select a saved prompt —</option>';
@@ -1293,7 +1767,7 @@ savePromptBtn.addEventListener("click", async () => {
       ),
     },
   };
-  await window.lavely.prompts.save(entry);
+  await window.My.prompts.save(entry);
   await refreshSavedPrompts();
   showToast(`Saved prompt "${name}" ✓`, "success");
 });
@@ -1363,12 +1837,362 @@ deletePromptBtn.addEventListener("click", async () => {
     `"${entry.name}" will be permanently removed.`,
   );
   if (!ok) return;
-  await window.lavely.prompts.delete(id);
+  await window.My.prompts.delete(id);
   await refreshSavedPrompts();
   showToast("Prompt deleted", "info");
 });
 
 refreshSavedPrompts();
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BOOKMIND (RAG) SCREEN
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface BookCandidate {
+  _id?: string;
+  Title?: string;
+  Subtitle?: string;
+  Authors?: string[];
+  Genres?: string[];
+  Moods?: string[];
+  Pacing?: string;
+  Description?: string;
+  AvgRating?: number;
+  CoverImageUrl?: string;
+  PageCount?: number;
+  score?: number;
+}
+
+const booksState = {
+  bridgeRunning: false,
+  bridgeReady: false,
+  querying: false,
+};
+
+const booksQueryInput = $<HTMLInputElement>("#books-query");
+const booksUserIdInput = $<HTMLInputElement>("#books-user-id");
+const booksGoodreadsInput = $<HTMLInputElement>("#books-goodreads");
+const booksLimitInput = $<HTMLInputElement>("#books-limit");
+const booksUseLlmInput = $<HTMLInputElement>("#books-use-llm");
+const booksStatus = $<HTMLElement>("#books-status");
+const booksStartBtn = $<HTMLButtonElement>("#books-start-btn");
+const booksQueryBtn = $<HTMLButtonElement>("#books-query-btn");
+const booksStopBtn = $<HTMLButtonElement>("#books-stop-btn");
+const booksCandidatesList = $<HTMLElement>("#books-candidates-list");
+const booksLlmOutput = $<HTMLElement>("#books-llm-output");
+
+function updateBooksUI() {
+  booksQueryBtn.disabled = !booksState.bridgeReady || booksState.querying;
+  booksStopBtn.style.display = booksState.bridgeRunning ? "" : "none";
+  booksStartBtn.textContent = booksState.bridgeReady
+    ? "Reload Bridge"
+    : booksState.bridgeRunning
+      ? "Starting…"
+      : "▶ Start Bridge";
+  if (booksState.bridgeReady) {
+    booksStatus.textContent = "BookMind bridge ready";
+    booksStatus.classList.add("ok");
+  } else if (booksState.bridgeRunning) {
+    booksStatus.textContent = "Starting bridge…";
+    booksStatus.classList.remove("ok");
+  } else {
+    booksStatus.textContent = "Bridge not started";
+    booksStatus.classList.remove("ok");
+  }
+}
+
+function renderBookCandidates(books: BookCandidate[]) {
+  booksCandidatesList.innerHTML = "";
+  if (!books.length) {
+    booksCandidatesList.innerHTML =
+      '<div style="color:var(--text3);font-size:12px;padding:20px 0">No matches found.</div>';
+    return;
+  }
+  books.forEach((b) => {
+    const card = document.createElement("div");
+    card.className = "book-card";
+
+    const cover = document.createElement("div");
+    cover.className = "book-cover";
+    if (b.CoverImageUrl) {
+      const img = document.createElement("img");
+      img.src = b.CoverImageUrl;
+      img.alt = b.Title || "cover";
+      img.onerror = () => {
+        img.remove();
+      };
+      cover.appendChild(img);
+    }
+
+    const info = document.createElement("div");
+    info.className = "book-info";
+
+    const title = document.createElement("div");
+    title.className = "bc-title";
+    title.textContent = b.Title || "Untitled";
+    title.title = b.Title || "";
+
+    const author = document.createElement("div");
+    author.className = "bc-author";
+    const authors = b.Authors || [];
+    author.textContent = authors.length ? authors.join(", ") : "Unknown author";
+
+    const meta = document.createElement("div");
+    meta.className = "bc-meta";
+    const parts: string[] = [];
+    const genres = (b.Genres || []).slice(0, 3);
+    if (genres.length) parts.push(genres.join(" · "));
+    if (typeof b.AvgRating === "number")
+      parts.push(`★ ${b.AvgRating.toFixed(1)}`);
+    if (b.Pacing) parts.push(b.Pacing);
+    if (typeof b.score === "number")
+      parts.push(
+        `<span class="bc-score">${(b.score * 100).toFixed(0)}%</span>`,
+      );
+    meta.innerHTML = parts.join("&nbsp;&nbsp;•&nbsp;&nbsp;");
+
+    info.appendChild(title);
+    info.appendChild(author);
+    info.appendChild(meta);
+
+    // Expandable description
+    const desc = document.createElement("div");
+    desc.className = "bc-desc";
+    const descText = (b.Description || "").trim();
+    if (descText) {
+      desc.textContent =
+        descText.length > 500 ? descText.slice(0, 500) + "…" : descText;
+      if (b.PageCount) {
+        desc.textContent += ` (${b.PageCount} pages)`;
+      }
+    } else {
+      desc.textContent = "No description available.";
+    }
+    info.appendChild(desc);
+
+    // Click to toggle description
+    card.addEventListener("click", () => {
+      card.classList.toggle("expanded");
+    });
+
+    card.appendChild(cover);
+    card.appendChild(info);
+    booksCandidatesList.appendChild(card);
+  });
+}
+
+booksStartBtn.addEventListener("click", async () => {
+  if (booksState.bridgeRunning) {
+    await window.My.books.stop();
+  }
+  booksState.bridgeRunning = true;
+  booksState.bridgeReady = false;
+  updateBooksUI();
+  const res = await window.My.books.start();
+  if (!res.ok) {
+    booksState.bridgeRunning = false;
+    updateBooksUI();
+    showToast(`Failed to start BookMind: ${res.error}`, "error", 6000);
+  }
+});
+
+booksStopBtn.addEventListener("click", async () => {
+  await window.My.books.stop();
+  booksState.bridgeRunning = false;
+  booksState.bridgeReady = false;
+  booksState.querying = false;
+  updateBooksUI();
+});
+
+booksQueryBtn.addEventListener("click", async () => {
+  if (!booksState.bridgeReady || booksState.querying) return;
+  const query = booksQueryInput.value.trim();
+  const userId = booksUserIdInput.value.trim();
+  const goodreads = booksGoodreadsInput.value.trim();
+  if (!query && !userId && !goodreads) {
+    showToast("Enter a query, user id, or Goodreads handle", "info");
+    return;
+  }
+  booksState.querying = true;
+  updateBooksUI();
+
+  booksCandidatesList.innerHTML =
+    '<div style="color:var(--text3);font-size:12px;padding:20px 0">Searching…</div>';
+  booksLlmOutput.innerHTML = "";
+
+  const request: Record<string, unknown> = {
+    query,
+    limit: parseInt(booksLimitInput.value) || 10,
+  };
+  if (userId) request["user_id"] = userId;
+  if (goodreads) request["goodreads_user"] = goodreads;
+  if (booksUseLlmInput.checked && state.paths?.llmModel) {
+    request["llm_model_dir"] = state.paths.llmModel;
+  }
+
+  const res = await window.My.books.query(request);
+  if (!res.ok) {
+    booksState.querying = false;
+    updateBooksUI();
+    showToast(`Query failed: ${res.error}`, "error", 5000);
+  }
+});
+
+booksQueryInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !booksQueryBtn.disabled) {
+    booksQueryBtn.click();
+  }
+});
+
+// Refresh the Books UI state whenever the user navigates to the screen
+document
+  .querySelector<HTMLElement>('.nav-btn[data-screen="books"]')
+  ?.addEventListener("click", () => updateBooksUI());
+
+// Initial paint of the Books UI state
+updateBooksUI();
+
+window.My.books.onEvent((msg: BridgeMsg) => {
+  if (msg.type === "status") {
+    const text = msg["message"] as string;
+    booksStatus.textContent = text;
+    if (/ready/i.test(text)) {
+      booksState.bridgeReady = true;
+      booksState.bridgeRunning = true;
+      updateBooksUI();
+    }
+  } else if (msg.type === "goodreads_matched") {
+    const fetched = Number(msg["fetched"] || 0);
+    const matched = (msg["books"] as unknown[]) || [];
+    showToast(
+      `Goodreads: fetched ${fetched}, matched ${matched.length} to library`,
+      "success",
+      4500,
+    );
+  } else if (msg.type === "candidates") {
+    const books = (msg["books"] || []) as BookCandidate[];
+    renderBookCandidates(books);
+  } else if (msg.type === "token") {
+    const t = (msg["text"] || "") as string;
+    booksLlmOutput.textContent = (booksLlmOutput.textContent || "") + t;
+  } else if (msg.type === "done") {
+    booksState.querying = false;
+    updateBooksUI();
+    if (!booksLlmOutput.textContent) {
+      booksLlmOutput.innerHTML =
+        '<span style="color:var(--text3);font-size:12px">Enable "Use local LLM" to get explanations.</span>';
+    }
+  } else if (msg.type === "error") {
+    booksState.querying = false;
+    updateBooksUI();
+    const m = String(msg["message"] || "unknown error");
+    showToast(`BookMind error: ${m}`, "error", 6000);
+    booksCandidatesList.innerHTML = `<div style="color:var(--danger);font-size:12px;padding:10px 0">${m}</div>`;
+  } else if (msg.type === "exit") {
+    booksState.bridgeRunning = false;
+    booksState.bridgeReady = false;
+    booksState.querying = false;
+    updateBooksUI();
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SETTINGS SCREEN
+// ─────────────────────────────────────────────────────────────────────────────
+
+const cfgMongoUri = $<HTMLInputElement>("#cfg-mongo-uri");
+const cfgMongoDb = $<HTMLInputElement>("#cfg-mongo-db");
+const cfgEmbedModel = $<HTMLInputElement>("#cfg-embed-model");
+const cfgVectorIndex = $<HTMLInputElement>("#cfg-vector-index");
+const cfgGoodreadsUser = $<HTMLInputElement>("#cfg-goodreads-user");
+const cfgTestBtn = $<HTMLButtonElement>("#cfg-test-mongo");
+const cfgMongoStatus = $<HTMLElement>("#cfg-mongo-status");
+const cfgMongoResult = $<HTMLElement>("#cfg-mongo-result");
+const cfgSaveBtn = $<HTMLButtonElement>("#cfg-save-btn");
+const cfgSaveStatus = $<HTMLElement>("#cfg-save-status");
+const cfgToggleBtn = $<HTMLButtonElement>("#cfg-mongo-toggle");
+
+// Load saved config into fields
+async function loadSettings() {
+  const cfg = await window.My.config.get();
+  cfgMongoUri.value = cfg.mongoUri || "";
+  cfgMongoDb.value = cfg.mongoDb || "bookmind";
+  cfgEmbedModel.value =
+    cfg.embedModel || "sentence-transformers/all-MiniLM-L6-v2";
+  cfgVectorIndex.value = cfg.vectorIndex || "vs_books_embedding";
+  cfgGoodreadsUser.value = cfg.goodreadsUser || "";
+}
+
+// Toggle password visibility
+cfgToggleBtn.addEventListener("click", () => {
+  if (cfgMongoUri.type === "password") {
+    cfgMongoUri.type = "text";
+    cfgToggleBtn.textContent = "Hide";
+  } else {
+    cfgMongoUri.type = "password";
+    cfgToggleBtn.textContent = "Show";
+  }
+});
+
+// Test connection
+cfgTestBtn.addEventListener("click", async () => {
+  const uri = cfgMongoUri.value.trim();
+  const db = cfgMongoDb.value.trim() || "bookmind";
+  if (!uri) {
+    showToast("Enter a MongoDB URI first", "error");
+    return;
+  }
+  cfgTestBtn.disabled = true;
+  cfgMongoStatus.textContent = "Testing…";
+  cfgMongoStatus.style.color = "var(--text3)";
+  cfgMongoResult.style.display = "none";
+
+  const res = await window.My.config.testMongo(uri, db);
+  cfgTestBtn.disabled = false;
+
+  if (res.ok) {
+    cfgMongoStatus.textContent = "Connected ✓";
+    cfgMongoStatus.style.color = "var(--success)";
+    if (res.collections) {
+      const lines = Object.entries(res.collections)
+        .map(([name, count]) => `  ${name}: ${count} docs`)
+        .join("\n");
+      cfgMongoResult.textContent = `Database "${db}" collections:\n${lines}`;
+      cfgMongoResult.style.display = "block";
+    }
+  } else {
+    cfgMongoStatus.textContent = "Connection failed ✗";
+    cfgMongoStatus.style.color = "var(--danger)";
+    cfgMongoResult.textContent = res.error || "Unknown error";
+    cfgMongoResult.style.display = "block";
+  }
+});
+
+// Save
+cfgSaveBtn.addEventListener("click", async () => {
+  const patch = {
+    mongoUri: cfgMongoUri.value.trim(),
+    mongoDb: cfgMongoDb.value.trim() || "bookmind",
+    embedModel:
+      cfgEmbedModel.value.trim() || "sentence-transformers/all-MiniLM-L6-v2",
+    vectorIndex: cfgVectorIndex.value.trim() || "vs_books_embedding",
+    goodreadsUser: cfgGoodreadsUser.value.trim(),
+  };
+  await window.My.config.set(patch);
+  cfgSaveStatus.textContent = "Saved ✓";
+  showToast("Settings saved", "success");
+  setTimeout(() => {
+    cfgSaveStatus.textContent = "";
+  }, 3000);
+});
+
+// Load settings on first visit to the screen
+document
+  .querySelector<HTMLElement>('.nav-btn[data-screen="settings"]')
+  ?.addEventListener("click", () => loadSettings());
+
+// Also load on startup to check if mongo is configured
+loadSettings();
 
 // ─────────────────────────────────────────────────────────────────────────────
 // FIRST-RUN ESSENTIALS MODAL
@@ -1452,11 +2276,11 @@ interface EssentialState extends Essential {
 const essentialState: Record<string, EssentialState> = {};
 
 async function checkEssentialsInstalled(): Promise<string[]> {
-  const installed = await window.lavely.models.list();
+  const installed = await window.My.models.list();
   const installedNames = new Set(installed.map((m) => m.name.toLowerCase()));
-  return ESSENTIALS.filter((e) => !installedNames.has(e.targetDir.toLowerCase())).map(
-    (e) => e.id,
-  );
+  return ESSENTIALS.filter(
+    (e) => !installedNames.has(e.targetDir.toLowerCase()),
+  ).map((e) => e.id);
 }
 
 function renderEssentialRow(e: EssentialState): HTMLElement {
@@ -1508,8 +2332,17 @@ function renderEssentials() {
   const allDone = Object.values(essentialState).every(
     (s) => s.installed || s.done,
   );
-  essentialsInstallAllBtn.textContent = allDone ? "All set ✓" : "⬇ Install All";
-  essentialsInstallAllBtn.disabled = allDone;
+  if (allDone) {
+    essentialsInstallAllBtn.textContent = "All set — let's go ✓";
+    essentialsInstallAllBtn.disabled = false;
+    // Clicking "All set" just closes the modal
+    essentialsInstallAllBtn.onclick = () =>
+      essentialsModal.classList.remove("open");
+  } else {
+    essentialsInstallAllBtn.textContent = "⬇ Install All";
+    essentialsInstallAllBtn.disabled = false;
+    essentialsInstallAllBtn.onclick = null; // falls through to installAllEssentials
+  }
 }
 
 async function installEssential(id: string): Promise<void> {
@@ -1519,7 +2352,7 @@ async function installEssential(id: string): Promise<void> {
   renderEssentials();
 
   return new Promise((resolve) => {
-    const dispose = window.lavely.models.onDownloadEvent((msg: BridgeMsg) => {
+    const dispose = window.My.models.onDownloadEvent((msg: BridgeMsg) => {
       // We can't easily filter events per-download since the backend isn't
       // tagged, but since we install sequentially this is safe.
       if (msg.type === "done") {
@@ -1537,7 +2370,7 @@ async function installEssential(id: string): Promise<void> {
         resolve();
       }
     });
-    window.lavely.models.download(state.repoId, state.targetDir, state.type);
+    window.My.models.download(state.repoId, state.targetDir, state.type);
   });
 }
 

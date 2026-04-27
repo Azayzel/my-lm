@@ -4,10 +4,10 @@
     <meta charset="UTF-8" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' file: data:; font-src 'self' data:;"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' file: data: https:; font-src 'self' data:;"
     />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Lavely</title>
+    <title>My</title>
     <style>
       /* ── Reset & Base ─────────────────────────────────────────────── */
       *,
@@ -321,6 +321,91 @@
         border: 1px solid var(--border);
         color: var(--text);
         border-bottom-left-radius: 4px;
+      }
+      /* Allow text selection in content areas */
+      .bubble,
+      #train-log,
+      #books-llm-output,
+      #full-prompt-preview,
+      #download-log,
+      #diagnostics-log,
+      pre,
+      code {
+        user-select: text;
+        -webkit-user-select: text;
+      }
+      /* Markdown inside assistant bubbles */
+      .msg.assistant .bubble h1,
+      .msg.assistant .bubble h2,
+      .msg.assistant .bubble h3 {
+        font-size: 14px;
+        font-weight: 700;
+        color: var(--text);
+        margin: 10px 0 4px;
+      }
+      .msg.assistant .bubble h1 { font-size: 16px; }
+      .msg.assistant .bubble h2 { font-size: 15px; }
+      .msg.assistant .bubble p {
+        margin: 6px 0;
+      }
+      .msg.assistant .bubble ul,
+      .msg.assistant .bubble ol {
+        margin: 6px 0 6px 18px;
+        padding: 0;
+      }
+      .msg.assistant .bubble li {
+        margin: 3px 0;
+      }
+      .msg.assistant .bubble code {
+        background: var(--bg0);
+        padding: 1px 5px;
+        border-radius: 4px;
+        font-family: "Courier New", monospace;
+        font-size: 12px;
+        color: var(--accent);
+      }
+      .msg.assistant .bubble pre {
+        background: var(--bg0);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 10px 12px;
+        overflow-x: auto;
+        margin: 8px 0;
+      }
+      .msg.assistant .bubble pre code {
+        background: none;
+        padding: 0;
+        color: var(--text);
+      }
+      .msg.assistant .bubble strong {
+        color: var(--accent);
+      }
+      .msg.assistant .bubble a {
+        color: var(--accent2);
+        text-decoration: underline;
+      }
+      .msg.assistant .bubble blockquote {
+        border-left: 3px solid var(--accent);
+        padding-left: 12px;
+        margin: 8px 0;
+        color: var(--text2);
+        font-style: italic;
+      }
+      .msg.assistant .bubble table {
+        border-collapse: collapse;
+        margin: 8px 0;
+        font-size: 12px;
+        width: 100%;
+      }
+      .msg.assistant .bubble th,
+      .msg.assistant .bubble td {
+        border: 1px solid var(--border);
+        padding: 5px 8px;
+        text-align: left;
+      }
+      .msg.assistant .bubble th {
+        background: var(--bg3);
+        font-weight: 600;
       }
 
       /* streaming cursor */
@@ -651,11 +736,87 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
-        margin-bottom: 16px;
+        margin-bottom: 8px;
       }
       .media-header h2 {
         font-size: 18px;
         font-weight: 700;
+      }
+      .media-toolbar {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        margin-bottom: 12px;
+        flex-wrap: wrap;
+      }
+      .media-breadcrumb {
+        display: flex;
+        gap: 4px;
+        align-items: center;
+        font-size: 12px;
+        color: var(--text2);
+        flex: 1;
+        min-width: 0;
+      }
+      .media-breadcrumb span {
+        cursor: pointer;
+        padding: 2px 6px;
+        border-radius: 4px;
+        transition: background 0.15s;
+      }
+      .media-breadcrumb span:hover {
+        background: var(--bg3);
+        color: var(--text);
+      }
+      .media-breadcrumb span.current {
+        color: var(--accent);
+        font-weight: 600;
+      }
+      .media-breadcrumb .sep {
+        color: var(--text3);
+        cursor: default;
+        padding: 0 2px;
+      }
+      .media-breadcrumb .sep:hover {
+        background: none;
+      }
+      .folder-card {
+        background: var(--bg2);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 14px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        cursor: pointer;
+        transition: border-color 0.15s, background 0.15s;
+      }
+      .folder-card:hover {
+        border-color: var(--accent);
+        background: var(--bg3);
+      }
+      .folder-card .folder-icon {
+        font-size: 24px;
+      }
+      .folder-card .folder-name {
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--text);
+        flex: 1;
+      }
+      .folder-card .folder-del {
+        font-size: 12px;
+        color: var(--text3);
+        cursor: pointer;
+        padding: 2px 6px;
+        border-radius: 4px;
+        border: none;
+        background: none;
+        transition: color 0.15s, background 0.15s;
+      }
+      .folder-card .folder-del:hover {
+        color: var(--danger);
+        background: var(--bg4);
       }
 
       #media-grid {
@@ -1050,6 +1211,158 @@
         white-space: pre-wrap;
       }
 
+      /* ── Books (BookMind RAG) screen ────────────────────────────── */
+      #screen-books {
+        flex-direction: column;
+        padding: 24px 32px;
+        overflow-y: auto;
+        gap: 18px;
+      }
+      #screen-books h2 {
+        font-size: 20px;
+        font-weight: 700;
+        letter-spacing: 0.3px;
+      }
+      #screen-books .hint {
+        color: var(--text3);
+        font-size: 12px;
+      }
+      .books-controls {
+        background: var(--bg2);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 16px 18px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .books-controls .row {
+        display: flex;
+        gap: 8px;
+      }
+      .books-controls .field-input {
+        flex: 1;
+      }
+      .books-controls #books-user-id {
+        max-width: 260px;
+        flex: 0 0 auto;
+      }
+      .books-actions {
+        display: flex;
+        gap: 8px;
+      }
+      .books-status {
+        font-size: 11px;
+        color: var(--text3);
+      }
+      .books-status.ok {
+        color: var(--success);
+      }
+      #books-results {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 18px;
+      }
+      .books-panel {
+        background: var(--bg2);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 16px 18px;
+        min-height: 300px;
+        overflow-y: auto;
+        max-height: 70vh;
+      }
+      .books-panel h3 {
+        font-size: 13px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: var(--text);
+        margin-bottom: 12px;
+      }
+      .book-card {
+        display: flex;
+        gap: 12px;
+        padding: 10px 0;
+        border-bottom: 1px solid var(--border);
+      }
+      .book-card:last-child {
+        border-bottom: none;
+      }
+      .book-card .book-cover {
+        width: 48px;
+        height: 72px;
+        background: var(--bg3);
+        border-radius: 4px;
+        overflow: hidden;
+        flex-shrink: 0;
+      }
+      .book-card .book-cover img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+      .book-card .book-info {
+        flex: 1;
+        min-width: 0;
+      }
+      .book-card .bc-title {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--text);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .book-card .bc-author {
+        font-size: 11px;
+        color: var(--text2);
+        margin-top: 2px;
+      }
+      .book-card .bc-meta {
+        font-size: 10px;
+        color: var(--text3);
+        margin-top: 4px;
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .book-card {
+        cursor: pointer;
+        transition: border-color 0.15s;
+      }
+      .book-card:hover {
+        border-color: var(--accent);
+      }
+      .book-card .bc-score {
+        font-size: 10px;
+        color: var(--accent);
+        font-weight: 600;
+      }
+      .book-card .bc-desc {
+        display: none;
+        font-size: 11px;
+        color: var(--text2);
+        line-height: 1.5;
+        margin-top: 6px;
+        padding-top: 6px;
+        border-top: 1px solid var(--border);
+        user-select: text;
+        -webkit-user-select: text;
+      }
+      .book-card.expanded .bc-desc {
+        display: block;
+      }
+      #books-llm-output {
+        font-size: 13px;
+        line-height: 1.6;
+        color: var(--text);
+        white-space: pre-wrap;
+      }
+      #books-llm-output strong {
+        color: var(--accent);
+      }
+
       /* ── Train screen ───────────────────────────────────────────── */
       #screen-train {
         flex-direction: column;
@@ -1379,6 +1692,36 @@
         gap: 10px;
       }
 
+      /* ── Settings screen ──────────────────────────────────────────── */
+      #screen-settings {
+        flex-direction: column;
+        padding: 24px 32px;
+        overflow-y: auto;
+      }
+      #screen-settings.active {
+        display: flex;
+      }
+      .settings-card {
+        background: var(--bg2);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 18px 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .settings-card h3 {
+        font-size: 14px;
+        font-weight: 600;
+        margin-bottom: 4px;
+      }
+      .settings-card .hint {
+        font-size: 11px;
+        color: var(--text3);
+        line-height: 1.4;
+        margin-bottom: 8px;
+      }
+
       /* ── Scrollbars global ───────────────────────────────────────── */
       * {
         scrollbar-width: thin;
@@ -1389,7 +1732,7 @@
   <body>
     <!-- Titlebar -->
     <div id="titlebar">
-      <span class="logo">✦ Lavely</span>
+      <span class="logo">✦ My</span>
       <div class="title-spacer"></div>
       <div class="win-btns">
         <button id="btn-min" title="Minimize">─</button>
@@ -1401,7 +1744,7 @@
     <div id="app">
       <!-- Sidebar -->
       <nav id="sidebar">
-        <span class="nav-section-label">Lavely</span>
+        <span class="nav-section-label">My</span>
         <div class="nav-btn active" data-screen="chat">
           <span class="icon">💬</span> Chat
         </div>
@@ -1411,6 +1754,9 @@
         <div class="nav-btn" data-screen="media">
           <span class="icon">🖼️</span> Media
         </div>
+        <div class="nav-btn" data-screen="books">
+          <span class="icon">📚</span> Books
+        </div>
         <div class="nav-btn" data-screen="train">
           <span class="icon">🎓</span> Train
         </div>
@@ -1419,6 +1765,9 @@
         </div>
         <div class="nav-btn" data-screen="models">
           <span class="icon">📦</span> Models
+        </div>
+        <div class="nav-btn" data-screen="settings">
+          <span class="icon">⚙️</span> Settings
         </div>
 
         <div class="sidebar-footer">
@@ -1445,7 +1794,7 @@
               <div class="msg assistant">
                 <div class="avatar">✦</div>
                 <div class="bubble">
-                  Hi! I'm <strong>Lavely-LM</strong>. Start the model from the
+                  Hi! I'm <strong>My-LM</strong>. Start the model from the
                   panel on the right, then ask me anything.
                 </div>
               </div>
@@ -1455,7 +1804,7 @@
                 <textarea
                   id="chat-input"
                   rows="1"
-                  placeholder="Message Lavely-LM…"
+                  placeholder="Message My-LM…"
                   maxlength="4096"
                 ></textarea>
                 <button id="chat-send-btn" title="Send">↑</button>
@@ -1492,9 +1841,9 @@
                 class="field-textarea"
                 id="system-prompt"
                 rows="4"
-                placeholder="You are Lavely-LM, a helpful AI assistant."
+                placeholder="You are My-LM, a helpful AI assistant."
               >
-You are Lavely-LM, a helpful AI assistant.</textarea
+You are My-LM, a helpful AI assistant.</textarea
               >
             </div>
 
@@ -1595,7 +1944,17 @@ You are Lavely-LM, a helpful AI assistant.</textarea
             </div>
 
             <div class="side-section">
-              <h3>Prompt Builder</h3>
+              <h3 style="display: flex; justify-content: space-between; align-items: center">
+                Prompt Builder
+                <button
+                  class="btn btn-ghost btn-sm"
+                  id="enhance-prompt-btn"
+                  title="Use the local LLM to expand your prompt with rich visual details"
+                  style="font-size: 11px; padding: 3px 10px"
+                >
+                  ✨ Enhance
+                </button>
+              </h3>
               <div class="prompt-builder-grid">
                 <div>
                   <label class="field-label">Head (quality tags)</label>
@@ -1617,12 +1976,24 @@ You are Lavely-LM, a helpful AI assistant.</textarea
                 </div>
                 <div>
                   <label class="field-label">Position / Action</label>
-                  <input
-                    class="field-input"
+                  <div style="display: flex; gap: 6px; margin-bottom: 4px">
+                    <select class="field-select" id="pb-position-preset" style="flex: 1; font-size: 11px">
+                      <option value="">— pick a pose preset —</option>
+                    </select>
+                    <button
+                      class="btn btn-ghost btn-sm"
+                      id="pb-position-append"
+                      title="Append the selected pose to the text below"
+                      style="font-size: 11px; padding: 3px 8px; white-space: nowrap"
+                    >+ Add</button>
+                  </div>
+                  <textarea
+                    class="field-textarea"
                     id="pb-position"
-                    type="text"
+                    rows="2"
                     placeholder="e.g. taking a mirror selfie while wearing the classic suit, smiling with a smirk"
-                  />
+                    style="resize: vertical; min-height: 40px"
+                  ></textarea>
                 </div>
                 <div>
                   <label class="field-label">Weights / Lighting / Style</label>
@@ -1720,6 +2091,37 @@ face asymmetry, eyes asymmetry, deformed eyes, open mouth, cartoon, painting, bl
                   >0.45</span
                 >
               </div>
+              <label class="field-label" style="margin-top: 6px">
+                <input
+                  type="checkbox"
+                  id="img-face-swap"
+                  style="accent-color: var(--accent); margin-right: 4px"
+                />
+                Face Swap (replace with uploaded face)
+              </label>
+              <div
+                id="face-swap-upload"
+                style="margin-top: 4px; display: flex; gap: 6px; align-items: center"
+              >
+                <button
+                  class="btn btn-ghost btn-sm"
+                  id="face-swap-browse"
+                  style="font-size: 11px"
+                >
+                  Choose face...
+                </button>
+                <span
+                  id="face-swap-filename"
+                  style="font-size: 10px; color: var(--text3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 140px"
+                  title=""
+                >
+                  No file selected
+                </span>
+                <img
+                  id="face-swap-preview"
+                  style="width: 32px; height: 32px; border-radius: 50%; object-fit: cover; border: 1px solid var(--border); display: none"
+                />
+              </div>
             </div>
 
             <div class="side-section">
@@ -1779,14 +2181,113 @@ face asymmetry, eyes asymmetry, deformed eyes, open mouth, cartoon, painting, bl
         <div class="screen" id="screen-media">
           <div class="media-header">
             <h2>🖼️ Media</h2>
-            <button class="btn btn-ghost btn-sm" id="media-refresh-btn">
-              ⟳ Refresh
-            </button>
+            <div style="display: flex; gap: 6px">
+              <button class="btn btn-ghost btn-sm" id="media-new-folder-btn">
+                + Folder
+              </button>
+              <button class="btn btn-ghost btn-sm" id="media-refresh-btn">
+                ⟳ Refresh
+              </button>
+            </div>
+          </div>
+          <div class="media-toolbar">
+            <div class="media-breadcrumb" id="media-breadcrumb">
+              <span class="current">outputs</span>
+            </div>
           </div>
           <div id="media-grid">
             <div class="empty-state">
               <div class="es-icon">🖼️</div>
               <p>No images yet. Generate something!</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── Books Screen ── -->
+        <div class="screen" id="screen-books">
+          <h2>📚 BookMind Recommender</h2>
+          <p class="hint">
+            Semantic search across your BookMind library of 5,648+ books using
+            MongoDB Atlas Vector Search. Combine a free-text query with a
+            user's taste vector and (optionally) generate natural-language
+            explanations with your local LLM.
+          </p>
+
+          <div class="books-controls">
+            <div class="row">
+              <input
+                class="field-input"
+                id="books-query"
+                type="text"
+                placeholder="Describe what you feel like reading… e.g. 'a slow-burn historical mystery in Victorian London'"
+              />
+            </div>
+            <div class="row">
+              <input
+                class="field-input"
+                id="books-user-id"
+                type="text"
+                placeholder="BookMind user _id / email (optional)"
+              />
+              <input
+                class="field-input"
+                id="books-goodreads"
+                type="text"
+                placeholder="Goodreads username or ID (e.g. 64412103-josh)"
+              />
+            </div>
+            <div class="row" style="align-items: center; gap: 14px">
+              <label style="font-size: 11px; color: var(--text2)">
+                Limit
+                <input
+                  type="number"
+                  id="books-limit"
+                  min="3"
+                  max="30"
+                  value="10"
+                  style="width: 60px; margin-left: 6px"
+                  class="field-input"
+                />
+              </label>
+              <label style="font-size: 11px; color: var(--text2)">
+                <input
+                  type="checkbox"
+                  id="books-use-llm"
+                  style="accent-color: var(--accent); margin-right: 4px"
+                />
+                Use local LLM to explain picks
+              </label>
+              <span class="books-status" id="books-status">Bridge not started</span>
+            </div>
+            <div class="books-actions">
+              <button class="btn btn-primary btn-sm" id="books-start-btn">
+                ▶ Start Bridge
+              </button>
+              <button class="btn btn-primary btn-sm" id="books-query-btn" disabled>
+                🔍 Recommend
+              </button>
+              <button class="btn btn-ghost btn-sm" id="books-stop-btn" style="display: none">
+                Stop
+              </button>
+            </div>
+          </div>
+
+          <div id="books-results">
+            <div class="books-panel">
+              <h3>Candidates</h3>
+              <div id="books-candidates-list">
+                <div style="color: var(--text3); font-size: 12px; padding: 20px 0">
+                  Run a query to see matching books.
+                </div>
+              </div>
+            </div>
+            <div class="books-panel">
+              <h3>LLM Recommendation</h3>
+              <div id="books-llm-output">
+                <span style="color: var(--text3); font-size: 12px">
+                  Enable "Use local LLM" and run a query to get personalized picks.
+                </span>
+              </div>
             </div>
           </div>
         </div>
@@ -1838,8 +2339,8 @@ face asymmetry, eyes asymmetry, deformed eyes, open mouth, cartoon, painting, bl
                   class="field-input"
                   id="train-output-path"
                   type="text"
-                  placeholder="models/lavely-lm-lora"
-                  value="models/lavely-lm-lora"
+                  placeholder="models/My-lm-lora"
+                  value="models/My-lm-lora"
                 />
                 <button class="btn btn-ghost btn-sm" id="train-output-browse">
                   Browse
@@ -2112,6 +2613,121 @@ face asymmetry, eyes asymmetry, deformed eyes, open mouth, cartoon, painting, bl
               </button>
               <div id="download-log"></div>
               <div id="diagnostics-log"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+        <!-- ── Settings Screen ── -->
+        <div class="screen" id="screen-settings">
+          <div style="max-width: 640px">
+            <h2 style="font-size: 20px; font-weight: 700; margin-bottom: 18px">
+              ⚙️ Settings
+            </h2>
+
+            <div class="settings-card">
+              <h3>MongoDB Connection (BookMind)</h3>
+              <p class="hint">
+                Required for the Books recommender. Connect to a MongoDB Atlas
+                cluster (or local instance) that has a <code>books</code>
+                collection with embeddings.
+              </p>
+              <label class="field-label">Connection URI</label>
+              <input
+                class="field-input"
+                id="cfg-mongo-uri"
+                type="password"
+                placeholder="mongodb+srv://user:pass@cluster.mongodb.net/?appName=..."
+                style="font-family: 'Courier New', monospace; font-size: 11px"
+              />
+              <div style="display: flex; gap: 6px; margin-top: 4px">
+                <button
+                  class="btn btn-ghost btn-sm"
+                  id="cfg-mongo-toggle"
+                  style="font-size: 10px"
+                >
+                  Show
+                </button>
+              </div>
+              <label class="field-label" style="margin-top: 10px"
+                >Database Name</label
+              >
+              <input
+                class="field-input"
+                id="cfg-mongo-db"
+                type="text"
+                placeholder="bookmind"
+              />
+              <label class="field-label" style="margin-top: 10px"
+                >Embedding Model</label
+              >
+              <input
+                class="field-input"
+                id="cfg-embed-model"
+                type="text"
+                placeholder="sentence-transformers/all-MiniLM-L6-v2"
+              />
+              <label class="field-label" style="margin-top: 10px"
+                >Vector Search Index Name</label
+              >
+              <input
+                class="field-input"
+                id="cfg-vector-index"
+                type="text"
+                placeholder="vs_books_embedding"
+              />
+              <div
+                style="
+                  display: flex;
+                  gap: 8px;
+                  margin-top: 14px;
+                  align-items: center;
+                "
+              >
+                <button class="btn btn-primary btn-sm" id="cfg-test-mongo">
+                  Test Connection
+                </button>
+                <span
+                  id="cfg-mongo-status"
+                  style="font-size: 11px; color: var(--text3)"
+                ></span>
+              </div>
+              <div
+                id="cfg-mongo-result"
+                style="
+                  font-size: 11px;
+                  color: var(--text2);
+                  margin-top: 8px;
+                  display: none;
+                  background: var(--bg0);
+                  border: 1px solid var(--border);
+                  border-radius: 6px;
+                  padding: 10px;
+                  font-family: 'Courier New', monospace;
+                "
+              ></div>
+            </div>
+
+            <div class="settings-card" style="margin-top: 16px">
+              <h3>Defaults</h3>
+              <label class="field-label">Default Goodreads User</label>
+              <input
+                class="field-input"
+                id="cfg-goodreads-user"
+                type="text"
+                placeholder="e.g. 64412103-josh"
+              />
+            </div>
+
+            <div style="margin-top: 18px; display: flex; gap: 10px">
+              <button class="btn btn-primary" id="cfg-save-btn">
+                Save Settings
+              </button>
+              <span
+                id="cfg-save-status"
+                style="font-size: 12px; color: var(--success); align-self: center"
+              ></span>
             </div>
           </div>
         </div>

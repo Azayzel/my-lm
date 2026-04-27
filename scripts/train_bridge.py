@@ -1,5 +1,5 @@
 """
-train_bridge.py - QLoRA training bridge for Lavely UI.
+train_bridge.py - QLoRA training bridge for My UI.
 
 Spawns a training run using Hugging Face Trainer + PEFT QLoRA, streaming
 newline-delimited JSON events to stdout so the Electron UI can render progress.
@@ -19,7 +19,7 @@ Usage (positional args, JSON config via --config):
 Config fields (all optional except model_path and dataset_path):
   model_path        - base model directory
   dataset_path      - JSONL file (chat messages format) or HF dataset id
-  output_dir        - where to save adapter (default: models/lavely-lm-lora)
+  output_dir        - where to save adapter (default: models/My-lm-lora)
   epochs            - int (default 3)
   batch_size        - per-device batch (default 1)
   grad_accum        - gradient accumulation steps (default 8)
@@ -66,7 +66,7 @@ def main() -> None:
         emit({"type": "error", "message": "model_path and dataset_path are required"})
         sys.exit(1)
 
-    output_dir = cfg.get("output_dir", "models/lavely-lm-lora")
+    output_dir = cfg.get("output_dir", "models/My-lm-lora")
     epochs = int(cfg.get("epochs", 3))
     batch_size = int(cfg.get("batch_size", 1))
     grad_accum = int(cfg.get("grad_accum", 8))
@@ -84,6 +84,8 @@ def main() -> None:
     emit({"type": "status", "message": "Importing libraries..."})
     try:
         import torch
+        from datasets import load_dataset
+        from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
         from transformers import (
             AutoModelForCausalLM,
             AutoTokenizer,
@@ -92,8 +94,6 @@ def main() -> None:
             TrainerCallback,
             TrainingArguments,
         )
-        from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
-        from datasets import load_dataset
     except Exception as e:
         emit({"type": "error", "message": f"Import failed: {e}"})
         sys.exit(1)

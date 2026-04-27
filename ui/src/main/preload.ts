@@ -1,7 +1,7 @@
 import { contextBridge, ipcRenderer } from "electron";
 
 // Expose a safe, typed API to the renderer process
-contextBridge.exposeInMainWorld("lavely", {
+contextBridge.exposeInMainWorld("My", {
   // Window controls
   window: {
     minimize: () => ipcRenderer.send("window:minimize"),
@@ -44,6 +44,19 @@ contextBridge.exposeInMainWorld("lavely", {
     delete: (id: string) => ipcRenderer.invoke("history:delete", id),
   },
 
+  // BookMind (RAG)
+  books: {
+    start: () => ipcRenderer.invoke("books:start"),
+    query: (request: object) => ipcRenderer.invoke("books:query", request),
+    stop: () => ipcRenderer.invoke("books:stop"),
+    status: () => ipcRenderer.invoke("books:status"),
+    onEvent: (cb: (msg: object) => void) => {
+      const handler = (_: unknown, msg: object) => cb(msg);
+      ipcRenderer.on("books:event", handler);
+      return () => ipcRenderer.removeListener("books:event", handler);
+    },
+  },
+
   // Curated model catalog
   catalog: {
     list: (vramGb?: number) => ipcRenderer.invoke("catalog:list", vramGb),
@@ -60,7 +73,13 @@ contextBridge.exposeInMainWorld("lavely", {
 
   // Media
   media: {
-    list: () => ipcRenderer.invoke("media:list"),
+    list: (subdir?: string) => ipcRenderer.invoke("media:list", subdir),
+    createFolder: (name: string) =>
+      ipcRenderer.invoke("media:createFolder", name),
+    deleteFolder: (relPath: string) =>
+      ipcRenderer.invoke("media:deleteFolder", relPath),
+    move: (filePath: string, destFolder: string) =>
+      ipcRenderer.invoke("media:move", filePath, destFolder),
     delete: (filePath: string) => ipcRenderer.invoke("media:delete", filePath),
     open: (filePath: string) => ipcRenderer.invoke("media:open", filePath),
     show: (filePath: string) => ipcRenderer.invoke("media:show", filePath),
@@ -92,6 +111,14 @@ contextBridge.exposeInMainWorld("lavely", {
       ipcRenderer.on("train:event", handler);
       return () => ipcRenderer.removeListener("train:event", handler);
     },
+  },
+
+  // Config / Settings
+  config: {
+    get: () => ipcRenderer.invoke("config:get"),
+    set: (patch: object) => ipcRenderer.invoke("config:set", patch),
+    testMongo: (uri: string, dbName: string) =>
+      ipcRenderer.invoke("config:testMongo", uri, dbName),
   },
 
   // System

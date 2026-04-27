@@ -1,5 +1,5 @@
 """
-llm_bridge.py - Streaming LLM inference bridge for Lavely UI.
+llm_bridge.py - Streaming LLM inference bridge for My UI.
 
 Reads a JSON request from stdin, streams tokens to stdout as newline-delimited JSON.
 Each line is one of:
@@ -12,10 +12,10 @@ Usage:
   then write JSON to stdin: {"messages": [...], "max_tokens": 512, "system": "..."}
 """
 
-import sys
 import io
 import json
 import os
+import sys
 
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
@@ -26,8 +26,9 @@ def emit(obj: dict):
 
 
 def load_model(model_path: str):
-    from transformers import AutoModelForCausalLM, AutoTokenizer, TextIteratorStreamer
     import threading
+
+    from transformers import AutoModelForCausalLM, AutoTokenizer, TextIteratorStreamer
 
     tokenizer = AutoTokenizer.from_pretrained(model_path)
     model = AutoModelForCausalLM.from_pretrained(
@@ -41,7 +42,7 @@ def load_model(model_path: str):
 def run_inference(model, tokenizer, TextIteratorStreamer, threading, request: dict):
     messages = request.get("messages", [])
     max_tokens = request.get("max_tokens", 512)
-    system_prompt = request.get("system", "You are Lavely-LM, a helpful AI assistant.")
+    system_prompt = request.get("system", "You are My-LM, a helpful AI assistant.")
 
     # Prepend system message if not already present
     if not messages or messages[0].get("role") != "system":

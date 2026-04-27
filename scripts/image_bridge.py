@@ -1,5 +1,5 @@
 """
-image_bridge.py - Image generation bridge for Lavely UI.
+image_bridge.py - Image generation bridge for My UI.
 
 Reads a JSON request from stdin, streams progress to stdout as newline-delimited JSON.
 Each line is one of:
@@ -24,18 +24,18 @@ Usage:
   }
 """
 
-import sys
 import io
 import json
 import os
-from pathlib import Path
+import sys
 from datetime import datetime
+from pathlib import Path
 
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
 
-# Allow importing upscaler from scripts dir
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+# Allow running without `pip install -e .` by adding src/ to sys.path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 
 def emit(obj: dict):
@@ -47,8 +47,9 @@ def _load_taesd_preview(model_dir: str = "models/taesdxl"):
 
     Returns (tiny_vae, None) if available, or (None, None) if loading fails.
     """
-    import torch
     from pathlib import Path
+
+    import torch
     from diffusers import AutoencoderTiny
 
     base = Path(__file__).resolve().parent.parent
@@ -114,8 +115,15 @@ def _patch_compel_multi_empty_z():
 
 
 def load_pipeline(model_dir: str):
+    import warnings
+
     import torch
-    from diffusers import StableDiffusionXLPipeline, DPMSolverMultistepScheduler
+    from diffusers import DPMSolverMultistepScheduler, StableDiffusionXLPipeline
+
+    # Suppress compel's deprecation warning — it prints to stdout which
+    # breaks our JSON-over-stdout protocol.
+    warnings.filterwarnings("ignore", message=".*deprecated.*CompelFor.*")
+    warnings.filterwarnings("ignore", message=".*multiple tokenizers.*")
     from compel import Compel, ReturnedEmbeddingsType
 
     _patch_compel_multi_empty_z()
@@ -132,6 +140,11 @@ def load_pipeline(model_dir: str):
     pipe.text_encoder.to("cuda")
     pipe.text_encoder_2.to("cuda")
 
+    # Compel prints a deprecation warning directly to stdout when given
+    # multiple tokenizers. Since we use stdout for JSON protocol, redirect
+    # stdout to stderr during construction to avoid poisoning the stream.
+    real_stdout = sys.stdout
+    sys.stdout = sys.stderr
     compel = Compel(
         tokenizer=[pipe.tokenizer, pipe.tokenizer_2],
         text_encoder=[pipe.text_encoder, pipe.text_encoder_2],
@@ -140,6 +153,7 @@ def load_pipeline(model_dir: str):
         truncate_long_prompts=False,
         device="cuda",
     )
+    sys.stdout = real_stdout
     return pipe, compel
 
 
@@ -169,7 +183,8 @@ def run_generation(
     tiny_vae=None,
 ):
     import torch
-    from upscaler import load_upscaler, upscale_image
+
+    from mylm.imaging import load_upscaler, upscale_image
 
     prompt = request.get("prompt", "")
     negative_prompt = request.get(
@@ -183,7 +198,9 @@ def run_generation(
     do_upscale = request.get("upscale", True)
     do_face_fix = request.get("face_fix", False)
     face_fix_strength = float(request.get("face_fix_strength", 0.45))
-    filename = request.get("filename", None)
+    do_face_swap = request.get("face_swap", False)
+    face_swap_source = request.get("face_swap_source", "")  # path to source face image
+    filename = request.get("filename")
 
     # Pass both prompts as a list — compel batches them and auto-pads to the
     # same token length, which is required when truncate_long_prompts=False.
@@ -224,7 +241,7 @@ def run_generation(
             # Text encoders need to be on GPU for the img2img prompt encoding
             pipe.text_encoder.to("cuda")
             pipe.text_encoder_2.to("cuda")
-            from face_detailer import run_face_detailer
+            from mylm.imaging import run_face_detailer
 
             image = run_face_detailer(
                 image=image,
@@ -246,31 +263,70 @@ def run_generation(
         except Exception as e:
             emit({"type": "log", "text": f"Face detailer failed: {e}"})
 
+    # Face swap pass — replace generated faces with the user's uploaded face
+    if do_face_swap and face_swap_source and os.path.isfile(face_swap_source):
+        try:
+            emit({"type": "status", "message": "Swapping face..."})
+            from PIL import Image as PILImage
+
+            from face_swap import load_swapper, swap_face
+
+            swap_model_path = Path(__file__).resolve().parent.parent / "models" / "face_swap" / "inswapper_128.onnx"
+            if swap_model_path.exists():
+                swapper, analyser = load_swapper(str(swap_model_path))
+                source_face = PILImage.open(face_swap_source).convert("RGB")
+                image = swap_face(
+                    swapper,
+                    analyser,
+                    source_image=source_face,
+                    target_image=image,
+                    on_progress=lambda m: emit(m),
+                )
+                sw_path = Path(output_dir) / f"{base_name}_swap.png"
+                image.save(sw_path)
+                result_path = str(sw_path)
+                del swapper, analyser, source_face
+            else:
+                emit({"type": "log", "text": f"inswapper_128.onnx not found at {swap_model_path}"})
+        except Exception as e:
+            emit({"type": "log", "text": f"Face swap failed: {e}"})
+
     if do_upscale and os.path.isfile(upscaler_path):
-        emit({"type": "progress", "step": steps, "total": steps, "message": "Upscaling..."})
-        torch.cuda.empty_cache()
-        # Re-enable text encoders on CPU for next generation
-        pipe.text_encoder.to("cpu")
-        pipe.text_encoder_2.to("cpu")
+        try:
+            emit({"type": "status", "message": "Upscaling with 4x-UltraSharp..."})
+            torch.cuda.empty_cache()
+            upscaler = load_upscaler(upscaler_path, device="cuda")
+            upscaled = upscale_image(
+                upscaler, image, device="cuda", tile=384, tile_overlap=32
+            )
+            up_path = Path(output_dir) / f"{base_name}_4x.png"
+            upscaled.save(up_path)
+            result_path = str(up_path)
+            del upscaler, upscaled
+            torch.cuda.empty_cache()
+        except Exception as e:
+            emit({"type": "log", "text": f"Upscale failed: {e}"})
 
-        upscaler = load_upscaler(upscaler_path, device="cuda")
-        upscaled = upscale_image(upscaler, image, device="cuda", tile=384, tile_overlap=32)
-        up_path = Path(output_dir) / f"{base_name}_4x.png"
-        upscaled.save(up_path)
-        result_path = str(up_path)
-        del upscaler, upscaled
-        torch.cuda.empty_cache()
-
-    del conditioning, pooled, negative_conditioning, negative_pooled
-    torch.cuda.empty_cache()
-
-    # Re-enable text encoders for next run
-    pipe.text_encoder.to("cuda")
-    pipe.text_encoder_2.to("cuda")
-    # Disable cpu offload for next run (will be re-enabled)
-    pipe.reset_device_map() if hasattr(pipe, "reset_device_map") else None
-
+    # Always emit `done` with whatever path we have (base / face-fixed /
+    # upscaled), BEFORE doing cleanup that might fail. That way the UI
+    # always hears about completion.
     emit({"type": "done", "path": result_path})
+
+    # ── Cleanup for next generation ────────────────────────────────────
+    try:
+        del conditioning, pooled, negative_conditioning, negative_pooled
+        torch.cuda.empty_cache()
+    except Exception as e:
+        emit({"type": "log", "text": f"Cleanup warning: {e}"})
+
+    try:
+        # enable_model_cpu_offload() attaches accelerate hooks that are
+        # hard to remove. Moving components manually can fail on the second
+        # generation, so we just swallow errors here.
+        pipe.text_encoder.to("cuda")
+        pipe.text_encoder_2.to("cuda")
+    except Exception as e:
+        emit({"type": "log", "text": f"Post-gen text-encoder move warning: {e}"})
 
 
 def main():

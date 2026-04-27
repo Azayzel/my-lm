@@ -5,10 +5,10 @@ Writes newline-delimited JSON progress to stdout.
 Usage:
   python model_download.py <repo_id> <local_dir> [--type llm|image]
 """
-import sys
 import io
 import json
 import os
+import sys
 
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
@@ -20,8 +20,8 @@ def emit(obj: dict):
 
 def main():
     import argparse
-    from huggingface_hub import snapshot_download
-    from huggingface_hub import HfApi
+
+    from huggingface_hub import HfApi, snapshot_download
 
     parser = argparse.ArgumentParser()
     parser.add_argument("repo_id", help="HuggingFace repo id, e.g. Qwen/Qwen2.5-1.5B")

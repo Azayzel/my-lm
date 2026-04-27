@@ -1,0 +1,48 @@
+name: 💡 Feature request
+description: Suggest a new feature or improvement
+labels: ["enhancement", "triage"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Why is the current behavior insufficient?
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: What would you like My-LM to do? Be as specific as you can.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Workarounds, similar tools, or other approaches you ruled out.
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Which area does this affect?
+      multiple: true
+      options:
+        - Chat
+        - Image generation
+        - BookMind / RAG
+        - Training (QLoRA)
+        - Model catalog / downloads
+        - GPU / system
+        - UI / UX
+        - Build / packaging
+        - Docs
+
+  - type: checkboxes
+    id: contribute
+    attributes:
+      label: Would you like to contribute this?
+      options:
+        - label: I'd be willing to open a PR for this

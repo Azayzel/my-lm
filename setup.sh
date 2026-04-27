@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────────────────
-#  MyLm — one-shot setup for Linux/macOS
+#  My-LM — one-shot setup for Linux/macOS
 #  Creates .venv, installs Python deps with correct CUDA wheels (Linux), and
 #  builds the Electron UI. Safe to re-run.
 # ─────────────────────────────────────────────────────────────────────────
 set -e
 
 echo
-echo "=== MyLm setup ==="
+echo "=== My-LM setup ==="
 echo
 
 # --- 1. Check Python -----------------------------------------------------
@@ -52,6 +52,9 @@ fi
 # --- 4. Install the rest of the Python deps -----------------------------
 echo "[4/5] Installing Python dependencies from requirements.txt..."
 $VENV_PY -m pip install -r requirements.txt
+
+# Install the mylm package itself in editable mode so `from mylm.* import ...` works
+$VENV_PY -m pip install -e . >/dev/null
 
 # Remove xformers if pulled in transitively — breaks SDXL on torch 2.5
 $VENV_PY -m pip uninstall -y xformers >/dev/null 2>&1 || true

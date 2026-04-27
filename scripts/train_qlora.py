@@ -1,14 +1,14 @@
 """QLoRA fine-tuning script for Qwen3.5-2B on 6 GB VRAM."""
 
+from datasets import load_dataset
+from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
-    TrainingArguments,
-    Trainer,
     BitsAndBytesConfig,
+    Trainer,
+    TrainingArguments,
 )
-from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
-from datasets import load_dataset
 
 model_id = "../models/qwen3.5-2b"
 
@@ -57,7 +57,7 @@ dataset = dataset.map(tokenize, remove_columns=dataset.column_names)
 
 # Training
 args = TrainingArguments(
-    output_dir="../models/lavely-lm-lora",
+    output_dir="../models/My-lm-lora",
     num_train_epochs=3,
     per_device_train_batch_size=1,  # keep at 1 for 6 GB
     gradient_accumulation_steps=8,  # effective batch = 8
@@ -70,4 +70,4 @@ args = TrainingArguments(
 
 trainer = Trainer(model=model, args=args, train_dataset=dataset)
 trainer.train()
-model.save_pretrained("../models/lavely-lm-lora")
+model.save_pretrained("../models/My-lm-lora")

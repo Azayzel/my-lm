@@ -1,8 +1,12 @@
 {
-  "name": "lavely-ui",
-  "version": "1.0.0",
-  "description": "Lavely LLM & Image Generation UI",
+  "name": "my-lm-ui",
+  "version": "0.1.0",
+  "description": "My-LM — local LLM, image generation, and QLoRA training UI",
   "main": "dist/main/main.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lavely/my-lm.git"
+  },
   "scripts": {
     "dev": "concurrently \"webpack --config webpack.renderer.js --watch\" \"tsc -p tsconfig.main.json --watch\" \"electron .\"",
     "build:main": "tsc -p tsconfig.main.json",
@@ -11,8 +15,14 @@
     "start": "npm run build && electron .",
     "package": "npm run build && electron-builder"
   },
-  "keywords": [],
-  "author": "Lavely",
+  "keywords": [
+    "electron",
+    "llm",
+    "sdxl",
+    "qlora",
+    "local-ai"
+  ],
+  "author": "Josh Lavely <contact@lavely.io>",
   "license": "MIT",
   "devDependencies": {
     "@types/node": "^20.0.0",
@@ -30,8 +40,8 @@
     "node-fetch": "^3.3.2"
   },
   "build": {
-    "appId": "com.lavely.ui",
-    "productName": "Lavely",
+    "appId": "io.lavely.mylm",
+    "productName": "My-LM",
     "directories": {
       "output": "release"
     },
@@ -44,14 +54,6 @@
       {
         "from": "../scripts",
         "to": "scripts"
-      },
-      {
-        "from": "../models",
-        "to": "models"
-      },
-      {
-        "from": "../outputs",
-        "to": "outputs"
       }
     ],
     "win": {
@@ -59,6 +61,9 @@
     },
     "linux": {
       "target": "AppImage"
+    },
+    "mac": {
+      "target": "dmg"
     }
   }
 }

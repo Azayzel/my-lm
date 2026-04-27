@@ -7,8 +7,10 @@ import { ImageBridge } from "./imageBridge";
 import { HistoryStore } from "./historyStore";
 import { ModelManager } from "./modelManager";
 import { TrainBridge, TrainConfig } from "./trainBridge";
+import { BookBridge } from "./bookBridge";
 import { PromptStore, SavedPrompt } from "./promptStore";
 import { MODEL_CATALOG, filterByVram } from "./modelCatalog";
+import { ConfigStore, AppConfig } from "./configStore";
 
 // ─── Paths ────────────────────────────────────────────────────────────────────
 const ROOT = path.resolve(__dirname, "..", "..", ".."); // ui/../.. => repo root
@@ -46,6 +48,7 @@ let mainWindow: BrowserWindow | null = null;
 let llmBridge: LLMBridge | null = null;
 let imageBridge: ImageBridge | null = null;
 let trainBridge: TrainBridge | null = null;
+let bookBridge: BookBridge | null = null;
 const historyStore = new HistoryStore(
   path.join(app.getPath("userData"), "history.json"),
 );
@@ -53,6 +56,36 @@ const promptStore = new PromptStore(
   path.join(app.getPath("userData"), "prompts.json"),
 );
 const modelManager = new ModelManager(SCRIPTS_DIR, MODELS_DIR);
+const configStore = new ConfigStore(
+  path.join(app.getPath("userData"), "config.json"),
+);
+
+// Seed config from .env on first run (so existing users don't lose their setup)
+if (!configStore.isMongoConfigured()) {
+  const envPath = path.join(ROOT, ".env");
+  if (fs.existsSync(envPath)) {
+    try {
+      const envContent = fs.readFileSync(envPath, "utf-8");
+      const getVal = (key: string) => {
+        const m = envContent.match(new RegExp(`^${key}=(.+)$`, "m"));
+        return m ? m[1].trim() : "";
+      };
+      const uri = getVal("MONGODB_URI");
+      if (uri) {
+        configStore.set({
+          mongoUri: uri,
+          mongoDb: getVal("MONGODB_DB") || "bookmind",
+          embedModel:
+            getVal("BOOKMIND_EMBED_MODEL") ||
+            "sentence-transformers/all-MiniLM-L6-v2",
+          vectorIndex: getVal("BOOKMIND_VECTOR_INDEX") || "vs_books_embedding",
+        });
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+}
 
 function runCommand(
   command: string,
@@ -132,6 +165,7 @@ app.on("window-all-closed", () => {
   llmBridge?.kill();
   imageBridge?.kill();
   trainBridge?.stop();
+  bookBridge?.kill();
   if (process.platform !== "darwin") app.quit();
 });
 
@@ -240,19 +274,76 @@ ipcMain.handle("prompts:delete", async (_e, id: string) =>
 );
 
 // ─── Media ───────────────────────────────────────────────────────────────────
-ipcMain.handle("media:list", async () => {
-  if (!fs.existsSync(OUTPUTS_DIR)) return [];
-  const files = fs
-    .readdirSync(OUTPUTS_DIR)
-    .filter((f) => /\.(png|jpg|jpeg|webp)$/i.test(f))
-    .map((f) => {
-      const full = path.join(OUTPUTS_DIR, f);
+// ─── Media (with folder support) ─────────────────────────────────────────
+ipcMain.handle("media:list", async (_e, subdir?: string) => {
+  const dir = subdir ? path.join(OUTPUTS_DIR, subdir) : OUTPUTS_DIR;
+  if (!fs.existsSync(dir)) return { folders: [], files: [] };
+
+  const entries = fs.readdirSync(dir, { withFileTypes: true });
+
+  const folders = entries
+    .filter((e) => e.isDirectory())
+    .map((e) => ({
+      name: e.name,
+      path: path.join(dir, e.name),
+      rel: subdir ? `${subdir}/${e.name}` : e.name,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  const files = entries
+    .filter(
+      (e) => e.isFile() && /\.(png|jpg|jpeg|webp)$/i.test(e.name),
+    )
+    .map((e) => {
+      const full = path.join(dir, e.name);
       const stat = fs.statSync(full);
-      return { name: f, path: full, size: stat.size, mtime: stat.mtimeMs };
+      return { name: e.name, path: full, size: stat.size, mtime: stat.mtimeMs };
     })
     .sort((a, b) => b.mtime - a.mtime);
-  return files;
+
+  return { folders, files };
 });
+
+ipcMain.handle("media:createFolder", async (_e, name: string) => {
+  try {
+    const sanitized = name.replace(/[<>:"/\\|?*]/g, "_").trim();
+    if (!sanitized) return { ok: false, error: "Invalid folder name" };
+    const full = path.join(OUTPUTS_DIR, sanitized);
+    fs.mkdirSync(full, { recursive: true });
+    return { ok: true, path: full };
+  } catch (e: any) {
+    return { ok: false, error: e.message };
+  }
+});
+
+ipcMain.handle("media:deleteFolder", async (_e, relPath: string) => {
+  try {
+    const full = path.join(OUTPUTS_DIR, relPath);
+    if (!fs.existsSync(full)) return { ok: false, error: "Folder not found" };
+    fs.rmSync(full, { recursive: true, force: true });
+    return { ok: true };
+  } catch (e: any) {
+    return { ok: false, error: e.message };
+  }
+});
+
+ipcMain.handle(
+  "media:move",
+  async (_e, filePath: string, destFolder: string) => {
+    try {
+      const destDir = destFolder
+        ? path.join(OUTPUTS_DIR, destFolder)
+        : OUTPUTS_DIR;
+      fs.mkdirSync(destDir, { recursive: true });
+      const basename = path.basename(filePath);
+      const dest = path.join(destDir, basename);
+      fs.renameSync(filePath, dest);
+      return { ok: true, newPath: dest };
+    } catch (e: any) {
+      return { ok: false, error: e.message };
+    }
+  },
+);
 
 ipcMain.handle("media:delete", async (_e, filePath: string) => {
   try {
@@ -270,6 +361,43 @@ ipcMain.handle("media:open", async (_e, filePath: string) => {
 ipcMain.handle("media:show", async (_e, filePath: string) => {
   shell.showItemInFolder(filePath);
 });
+
+// ─── BookMind (RAG book recommender) ─────────────────────────────────────────
+ipcMain.handle("books:start", async () => {
+  if (bookBridge?.isRunning()) return { ok: true, message: "Already running" };
+  if (!configStore.isMongoConfigured()) {
+    return {
+      ok: false,
+      error: "MongoDB not configured. Go to Settings and set up a connection first.",
+    };
+  }
+  bookBridge = new BookBridge(SCRIPTS_DIR, PYTHON, configStore.toEnv());
+  return bookBridge.start((msg) => {
+    mainWindow?.webContents.send("books:event", msg);
+  });
+});
+
+ipcMain.handle("books:query", async (_e, request: object) => {
+  if (!bookBridge?.isReady()) {
+    return {
+      ok: false,
+      error: "BookMind bridge not ready. Please start it first.",
+    };
+  }
+  bookBridge.send(request);
+  return { ok: true };
+});
+
+ipcMain.handle("books:stop", async () => {
+  bookBridge?.kill();
+  bookBridge = null;
+  return { ok: true };
+});
+
+ipcMain.handle("books:status", async () => ({
+  running: bookBridge?.isRunning() ?? false,
+  ready: bookBridge?.isReady() ?? false,
+}));
 
 // ─── Training ────────────────────────────────────────────────────────────────
 ipcMain.handle("train:start", async (_e, config: TrainConfig) => {
@@ -460,6 +588,53 @@ ipcMain.handle("system:gpuInfo", async () => {
     nvidia: nvidiaRows,
     nvidiaError: smi.ok ? null : smi.stderr || "nvidia-smi not available",
   };
+});
+
+// ─── Config / Settings ───────────────────────────────────────────────────────
+ipcMain.handle("config:get", async () => configStore.get());
+
+ipcMain.handle("config:set", async (_e, patch: Partial<AppConfig>) =>
+  configStore.set(patch),
+);
+
+ipcMain.handle("config:testMongo", async (_e, uri: string, dbName: string) => {
+  const script = [
+    "import sys, json",
+    `uri = ${JSON.stringify(uri)}`,
+    `db_name = ${JSON.stringify(dbName)}`,
+    "try:",
+    "    from pymongo import MongoClient",
+    "    c = MongoClient(uri, serverSelectionTimeoutMS=8000)",
+    "    c.admin.command('ping')",
+    "    db = c[db_name]",
+    "    colls = db.list_collection_names()",
+    "    counts = {n: db[n].count_documents({}) for n in colls}",
+    "    print(json.dumps({'ok': True, 'collections': counts}))",
+    "except Exception as e:",
+    "    print(json.dumps({'ok': False, 'error': str(e)}))",
+  ].join("\n");
+
+  return new Promise<{
+    ok: boolean;
+    collections?: Record<string, number>;
+    error?: string;
+  }>((resolve) => {
+    const proc = spawn(PYTHON, ["-c", script], {
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stdout = "";
+    proc.stdout.on("data", (d: Buffer) => {
+      stdout += d.toString();
+    });
+    proc.on("exit", () => {
+      try {
+        resolve(JSON.parse(stdout.trim()));
+      } catch {
+        resolve({ ok: false, error: stdout || "Unknown error" });
+      }
+    });
+    proc.on("error", (err) => resolve({ ok: false, error: err.message }));
+  });
 });
 
 // ─── File picker ──────────────────────────────────────────────────────────────

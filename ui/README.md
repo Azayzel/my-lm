@@ -1,6 +1,6 @@
-# MyLm UI
+# My-LM UI
 
-The Electron frontend for **MyLm** — see the [top-level README](../README.md) for the full feature list and setup.
+The Electron frontend for **My-LM** — see the [top-level README](../README.md) for the full feature list and setup.
 
 This doc covers UI internals only.
 
@@ -11,7 +11,7 @@ ui/
 ├── src/
 │   ├── main/                   Main process (Node)
 │   │   ├── main.ts             Window, IPC handlers, process lifecycle
-│   │   ├── preload.ts          contextBridge API exposed as window.lavely
+│   │   ├── preload.ts          contextBridge API exposed as window.My
 │   │   ├── llmBridge.ts        Spawns llm_bridge.py, streams tokens
 │   │   ├── imageBridge.ts      Spawns image_bridge.py, streams progress + previews
 │   │   ├── trainBridge.ts      Spawns train_bridge.py, streams training metrics
@@ -54,7 +54,7 @@ npm run package    # produce installer
 
 ## IPC pattern
 
-All renderer → main calls go through `window.lavely.*` (defined in `preload.ts`) which wraps `ipcRenderer.invoke`. Long-running operations (chat, image gen, training, downloads) use fire-and-forget `send()` + an `onEvent` subscription for streaming updates back to the renderer.
+All renderer → main calls go through `window.My.*` (defined in `preload.ts`) which wraps `ipcRenderer.invoke`. Long-running operations (chat, image gen, training, downloads) use fire-and-forget `send()` + an `onEvent` subscription for streaming updates back to the renderer.
 
 Each Python bridge is a long-lived subprocess owned by the main process. Bridges read newline-delimited JSON from stdin and emit newline-delimited JSON events to stdout. Screen navigation never kills or restarts bridges — you can freely leave and return while anything is running.
 

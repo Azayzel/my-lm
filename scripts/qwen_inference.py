@@ -1,7 +1,8 @@
-"""Qwen3.5-2B inference script for Lavely-LM."""
+"""Qwen3.5-2B inference script for My-LM."""
 
-import sys
 import io
+import sys
+
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
 
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -17,7 +18,7 @@ model = AutoModelForCausalLM.from_pretrained(
     # load_in_4bit=True,
 )
 
-messages = [{"role": "user", "content": "Hello, introduce yourself as Lavely-LM."}]
+messages = [{"role": "user", "content": "Hello, introduce yourself as My-LM."}]
 text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
 inputs = tokenizer(text, return_tensors="pt").to(model.device)
 outputs = model.generate(**inputs, max_new_tokens=512)

@@ -1,6 +1,6 @@
-// Global type declarations for the Lavely renderer
+// Global type declarations for the My renderer
 
-interface LavelyAPI {
+interface MyAPI {
   window: {
     minimize(): void;
     maximize(): void;
@@ -30,14 +30,31 @@ interface LavelyAPI {
     clear(): Promise<void>;
     delete(id: string): Promise<boolean>;
   };
+  books: {
+    start(): Promise<{ ok: boolean; message?: string; error?: string }>;
+    query(request: object): Promise<{ ok: boolean; error?: string }>;
+    stop(): Promise<{ ok: boolean }>;
+    status(): Promise<{ running: boolean; ready: boolean }>;
+    onEvent(cb: (msg: BridgeMsg) => void): () => void;
+  };
+  config: {
+    get(): Promise<AppConfig>;
+    set(patch: Partial<AppConfig>): Promise<AppConfig>;
+    testMongo(
+      uri: string,
+      dbName: string,
+    ): Promise<{
+      ok: boolean;
+      collections?: Record<string, number>;
+      error?: string;
+    }>;
+  };
   catalog: {
     list(vramGb?: number): Promise<CatalogEntry[]>;
   };
   prompts: {
     list(): Promise<SavedPrompt[]>;
-    save(
-      entry: Omit<SavedPrompt, "id" | "timestamp">,
-    ): Promise<SavedPrompt>;
+    save(entry: Omit<SavedPrompt, "id" | "timestamp">): Promise<SavedPrompt>;
     update(
       id: string,
       patch: Partial<SavedPrompt>,
@@ -45,7 +62,15 @@ interface LavelyAPI {
     delete(id: string): Promise<boolean>;
   };
   media: {
-    list(): Promise<MediaFile[]>;
+    list(subdir?: string): Promise<MediaListing>;
+    createFolder(
+      name: string,
+    ): Promise<{ ok: boolean; path?: string; error?: string }>;
+    deleteFolder(relPath: string): Promise<{ ok: boolean; error?: string }>;
+    move(
+      filePath: string,
+      destFolder: string,
+    ): Promise<{ ok: boolean; newPath?: string; error?: string }>;
     delete(path: string): Promise<{ ok: boolean; error?: string }>;
     open(path: string): Promise<void>;
     show(path: string): Promise<void>;
@@ -187,6 +212,17 @@ interface MediaFile {
   mtime: number;
 }
 
+interface MediaFolder {
+  name: string;
+  path: string;
+  rel: string; // relative path from outputs root
+}
+
+interface MediaListing {
+  folders: MediaFolder[];
+  files: MediaFile[];
+}
+
 interface ModelInfo {
   name: string;
   path: string;
@@ -201,6 +237,16 @@ interface AppPaths {
   python: string;
 }
 
+interface AppConfig {
+  mongoUri: string;
+  mongoDb: string;
+  embedModel: string;
+  vectorIndex: string;
+  defaultLlmModel: string;
+  defaultImageModel: string;
+  goodreadsUser: string;
+}
+
 interface Window {
-  lavely: LavelyAPI;
+  My: MyAPI;
 }

@@ -1,13 +1,13 @@
 @echo off
 REM ─────────────────────────────────────────────────────────────────────────
-REM  MyLm — one-shot setup for Windows
+REM  My-LM — one-shot setup for Windows
 REM  Creates .venv, installs Python deps with correct CUDA wheels, and builds
 REM  the Electron UI. Safe to re-run.
 REM ─────────────────────────────────────────────────────────────────────────
 setlocal
 
 echo.
-echo === MyLm setup ===
+echo === My-LM setup ===
 echo.
 
 REM --- 1. Check Python ------------------------------------------------------
@@ -57,6 +57,9 @@ if errorlevel 1 (
     echo [x] pip install -r requirements.txt failed
     exit /b 1
 )
+
+REM Install the mylm package itself in editable mode
+%VENV_PY% -m pip install -e . >nul
 
 REM Remove xformers if some other package pulled it in — it breaks SDXL on torch 2.5
 %VENV_PY% -m pip uninstall -y xformers >nul 2>&1

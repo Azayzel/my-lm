@@ -3,14 +3,14 @@
 import sys
 from datetime import datetime
 from pathlib import Path
+
 import torch
-from diffusers import StableDiffusionXLPipeline, DPMSolverMultistepScheduler
 from compel import Compel, ReturnedEmbeddingsType
 from compel.embeddings_provider import EmbeddingsProviderMulti
+from diffusers import DPMSolverMultistepScheduler, StableDiffusionXLPipeline
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from upscaler import load_upscaler, upscale_image
-from face_detailer import run_face_detailer
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+from mylm.imaging import load_upscaler, run_face_detailer, upscale_image
 
 # Compel 2.3.1 bug: EmbeddingsProviderMulti (used for SDXL) is missing `empty_z`,
 # which breaks internal padding when positive/negative prompts differ in length.

@@ -40,8 +40,13 @@ export class ImageBridge {
       });
       this._running = true;
 
-      const rl = readline.createInterface({ input: this.proc.stdout! });
+      const rl = readline.createInterface({
+        input: this.proc.stdout!,
+        // Default crlfDelay avoids splitting on \r\n issues on Windows
+        crlfDelay: Infinity,
+      });
       rl.on("line", (line) => {
+        if (!line) return;
         try {
           const msg = JSON.parse(line) as {
             type: string;
@@ -54,15 +59,34 @@ export class ImageBridge {
             resolve({ ok: false, error: String(msg["message"]) });
           }
           onEvent(msg);
-        } catch {
-          /* ignore */
+        } catch (err) {
+          // Don't silently swallow parse errors — surface them so the user
+          // can see what's happening. Trim very long lines to avoid spam.
+          const preview =
+            line.length > 200 ? line.slice(0, 200) + "…" : line;
+          console.error("[image_bridge] JSON parse error:", err, preview);
+          onEvent({
+            type: "log",
+            text: `[parse error] ${preview}`,
+          });
         }
       });
 
+      // Forward all non-empty stderr lines so Python tracebacks and warnings
+      // aren't lost. Filter out the common deprecation-warning noise only.
       this.proc.stderr!.on("data", (d: Buffer) => {
         const text = d.toString();
-        if (text.includes("Error") || text.includes("error")) {
-          onEvent({ type: "stderr", text });
+        for (const raw of text.split(/\r?\n/)) {
+          const trimmed = raw.trim();
+          if (!trimmed) continue;
+          if (
+            trimmed.includes("FutureWarning") ||
+            trimmed.includes("warnings.warn") ||
+            trimmed.includes("UserWarning")
+          ) {
+            continue;
+          }
+          onEvent({ type: "stderr", text: trimmed });
         }
       });
 

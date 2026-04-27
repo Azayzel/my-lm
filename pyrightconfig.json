@@ -1,0 +1,8 @@
+{
+  "include": ["src", "scripts", "tests"],
+  "exclude": ["**/node_modules", "**/__pycache__", ".venv", "models", "outputs", "ui"],
+  "extraPaths": ["src"],
+  "pythonVersion": "3.10",
+  "reportMissingImports": "warning",
+  "reportMissingTypeStubs": "none"
+}

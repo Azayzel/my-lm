@@ -6,8 +6,8 @@ Usage:
 Emits progress lines to stdout so the UI can show them.
 """
 
-import sys
 import json
+import sys
 from pathlib import Path
 
 

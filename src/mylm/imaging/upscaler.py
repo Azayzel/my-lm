@@ -1,8 +1,9 @@
 """4x-UltraSharp upscaler using spandrel (ESRGAN-family loader)."""
 
 from pathlib import Path
-import torch
+
 import numpy as np
+import torch
 from PIL import Image
 from spandrel import ImageModelDescriptor, ModelLoader
 
@@ -28,7 +29,6 @@ def upscale_image(
     Tiling processes the image in patches with overlap, so a 1024x1024 base
     can be 4x'd to 4096x4096 without OOMing on 6 GB VRAM.
     """
-    # PIL -> tensor [1, 3, H, W] in [0, 1]
     img = np.asarray(image.convert("RGB"), dtype=np.float32) / 255.0
     tensor = torch.from_numpy(img).permute(2, 0, 1).unsqueeze(0).to(device)
 
@@ -37,7 +37,6 @@ def upscale_image(
     out = torch.zeros((1, 3, h * scale, w * scale), device=device, dtype=tensor.dtype)
     weight = torch.zeros_like(out)
 
-    # Tile with overlap to avoid seams
     stride = tile - tile_overlap
     for y in range(0, h, stride):
         for x in range(0, w, stride):
@@ -49,5 +48,5 @@ def upscale_image(
             weight[:, :, y0 * scale : y1 * scale, x0 * scale : x1 * scale] += 1
 
     out = out / weight.clamp(min=1)
-    out = (out.squeeze(0).permute(1, 2, 0).cpu().numpy() * 255.0).clip(0, 255).astype(np.uint8)
-    return Image.fromarray(out)
+    arr = (out.squeeze(0).permute(1, 2, 0).cpu().numpy() * 255.0).clip(0, 255).astype(np.uint8)
+    return Image.fromarray(arr)

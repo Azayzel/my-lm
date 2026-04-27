@@ -1,4 +1,4 @@
-// Curated catalog of models known to work well with Lavely-LM.
+// Curated catalog of models known to work well with My-LM.
 // Each entry has a minimum VRAM recommendation (quantized where applicable)
 // so we can filter by the user's actual GPU.
 
@@ -197,7 +197,8 @@ export const MODEL_CATALOG: CatalogEntry[] = [
     category: "upscaler",
     minVramGb: 2,
     sizeGb: 0.07,
-    description: "General-purpose 4× upscaler. Slightly softer than UltraSharp.",
+    description:
+      "General-purpose 4× upscaler. Slightly softer than UltraSharp.",
     tags: ["upscaler", "4x"],
     targetDir: "upscalers",
   },

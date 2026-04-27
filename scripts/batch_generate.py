@@ -1,7 +1,7 @@
 """Batch image generation with RealVisXL V4.0."""
 
 import torch
-from diffusers import StableDiffusionXLPipeline, DPMSolverMultistepScheduler
+from diffusers import DPMSolverMultistepScheduler, StableDiffusionXLPipeline
 
 pipe = StableDiffusionXLPipeline.from_pretrained(
     "../models/realvisxl-v4",
