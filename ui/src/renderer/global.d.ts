@@ -96,6 +96,24 @@ interface MyAPI {
     ): Promise<{ ok: boolean; error?: string }>;
     onEvent(cb: (msg: BridgeMsg) => void): () => void;
   };
+  bench: {
+    start(
+      config: BenchmarkConfig,
+    ): Promise<{ ok: boolean; error?: string }>;
+    stop(): Promise<{ ok: boolean }>;
+    status(): Promise<{ running: boolean; resultsDir: string }>;
+    listResults(): Promise<{
+      ok: boolean;
+      dir: string;
+      files: BenchmarkResultFile[];
+      error?: string;
+    }>;
+    getResult(
+      filePath: string,
+    ): Promise<{ ok: boolean; data?: unknown; error?: string }>;
+    openResultsDir(): Promise<{ ok: boolean }>;
+    onEvent(cb: (msg: BridgeMsg) => void): () => void;
+  };
   dialog: {
     openDir(): Promise<string | null>;
     openFile(
@@ -160,6 +178,22 @@ interface TrainConfig {
   max_seq_len: number;
   logging_steps: number;
   use_4bit: boolean;
+}
+
+interface BenchmarkConfig {
+  models: string;
+  tasks: string;
+  conditions: string;
+  trials: number;
+  output?: string;
+  dryRun: boolean;
+}
+
+interface BenchmarkResultFile {
+  name: string;
+  path: string;
+  size: number;
+  mtime: number;
 }
 
 interface BridgeMsg {

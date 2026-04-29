@@ -7,6 +7,7 @@ import { ImageBridge } from "./imageBridge";
 import { HistoryStore } from "./historyStore";
 import { ModelManager } from "./modelManager";
 import { TrainBridge, TrainConfig } from "./trainBridge";
+import { BenchmarkBridge, BenchmarkConfig } from "./benchmarkBridge";
 import { BookBridge } from "./bookBridge";
 import { PromptStore, SavedPrompt } from "./promptStore";
 import { MODEL_CATALOG, filterByVram } from "./modelCatalog";
@@ -17,6 +18,7 @@ const ROOT = path.resolve(__dirname, "..", "..", ".."); // ui/../.. => repo root
 const SCRIPTS_DIR = path.join(ROOT, "scripts");
 const MODELS_DIR = path.join(ROOT, "models");
 const OUTPUTS_DIR = path.join(ROOT, "outputs");
+const BENCHMARK_RESULTS_DIR = path.join(ROOT, "benchmark_results");
 const LLM_MODEL_DIR = path.join(MODELS_DIR, "qwen3.5-2b");
 const IMAGE_MODEL_DIR = path.join(MODELS_DIR, "realvisxl-v4");
 const UPSCALER_PATH = path.join(MODELS_DIR, "upscalers", "4x-UltraSharp.pth");
@@ -48,6 +50,7 @@ let mainWindow: BrowserWindow | null = null;
 let llmBridge: LLMBridge | null = null;
 let imageBridge: ImageBridge | null = null;
 let trainBridge: TrainBridge | null = null;
+let benchmarkBridge: BenchmarkBridge | null = null;
 let bookBridge: BookBridge | null = null;
 const historyStore = new HistoryStore(
   path.join(app.getPath("userData"), "history.json"),
@@ -165,6 +168,7 @@ app.on("window-all-closed", () => {
   llmBridge?.kill();
   imageBridge?.kill();
   trainBridge?.stop();
+  benchmarkBridge?.stop();
   bookBridge?.kill();
   if (process.platform !== "darwin") app.quit();
 });
@@ -447,6 +451,82 @@ ipcMain.handle(
     });
   },
 );
+
+// ─── Benchmarking (agent_bench.py) ───────────────────────────────────────────
+ipcMain.handle("bench:start", async (_e, config: BenchmarkConfig) => {
+  if (benchmarkBridge?.isRunning()) {
+    return { ok: false, error: "Benchmark already running" };
+  }
+  benchmarkBridge = new BenchmarkBridge(SCRIPTS_DIR, PYTHON);
+  return benchmarkBridge.start(config, (msg) => {
+    mainWindow?.webContents.send("bench:event", msg);
+  });
+});
+
+ipcMain.handle("bench:stop", async () => {
+  benchmarkBridge?.stop();
+  return { ok: true };
+});
+
+ipcMain.handle("bench:status", async () => ({
+  running: benchmarkBridge?.isRunning() ?? false,
+  resultsDir: BENCHMARK_RESULTS_DIR,
+}));
+
+ipcMain.handle("bench:listResults", async () => {
+  try {
+    if (!fs.existsSync(BENCHMARK_RESULTS_DIR)) {
+      return { ok: true, dir: BENCHMARK_RESULTS_DIR, files: [] };
+    }
+    const entries = fs.readdirSync(BENCHMARK_RESULTS_DIR, {
+      withFileTypes: true,
+    });
+    const files = entries
+      .filter((e) => e.isFile() && e.name.toLowerCase().endsWith(".json"))
+      .map((e) => {
+        const full = path.join(BENCHMARK_RESULTS_DIR, e.name);
+        const stat = fs.statSync(full);
+        return {
+          name: e.name,
+          path: full,
+          size: stat.size,
+          mtime: stat.mtimeMs,
+        };
+      })
+      .sort((a, b) => b.mtime - a.mtime);
+    return { ok: true, dir: BENCHMARK_RESULTS_DIR, files };
+  } catch (e) {
+    return {
+      ok: false,
+      dir: BENCHMARK_RESULTS_DIR,
+      files: [],
+      error: (e as Error).message,
+    };
+  }
+});
+
+ipcMain.handle("bench:getResult", async (_e, filePath: string) => {
+  try {
+    // Restrict reads to the benchmark results directory.
+    const full = path.resolve(filePath);
+    const dir = path.resolve(BENCHMARK_RESULTS_DIR);
+    if (!full.startsWith(dir + path.sep) && full !== dir) {
+      return { ok: false, error: "Path outside benchmark results directory" };
+    }
+    if (!fs.existsSync(full)) return { ok: false, error: "File not found" };
+    const text = fs.readFileSync(full, "utf-8");
+    const data = JSON.parse(text);
+    return { ok: true, data };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+});
+
+ipcMain.handle("bench:openResultsDir", async () => {
+  fs.mkdirSync(BENCHMARK_RESULTS_DIR, { recursive: true });
+  shell.openPath(BENCHMARK_RESULTS_DIR);
+  return { ok: true };
+});
 
 // ─── Dataset file picker ─────────────────────────────────────────────────────
 ipcMain.handle(

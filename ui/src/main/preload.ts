@@ -113,6 +113,22 @@ contextBridge.exposeInMainWorld("My", {
     },
   },
 
+  // Benchmarking (agent_bench.py)
+  bench: {
+    start: (config: object) => ipcRenderer.invoke("bench:start", config),
+    stop: () => ipcRenderer.invoke("bench:stop"),
+    status: () => ipcRenderer.invoke("bench:status"),
+    listResults: () => ipcRenderer.invoke("bench:listResults"),
+    getResult: (filePath: string) =>
+      ipcRenderer.invoke("bench:getResult", filePath),
+    openResultsDir: () => ipcRenderer.invoke("bench:openResultsDir"),
+    onEvent: (cb: (msg: object) => void) => {
+      const handler = (_: unknown, msg: object) => cb(msg);
+      ipcRenderer.on("bench:event", handler);
+      return () => ipcRenderer.removeListener("bench:event", handler);
+    },
+  },
+
   // Config / Settings
   config: {
     get: () => ipcRenderer.invoke("config:get"),

@@ -919,7 +919,8 @@
       #screen-gpu {
         flex-direction: column;
         padding: 24px;
-        overflow: hidden;
+        overflow-y: auto;
+        gap: 16px;
       }
       #screen-gpu.active {
         display: flex;
@@ -928,15 +929,13 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
-        margin-bottom: 16px;
+        margin-bottom: 4px;
       }
       .gpu-header h2 {
         font-size: 18px;
         font-weight: 700;
       }
       #gpu-content {
-        flex: 1;
-        overflow-y: auto;
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
         gap: 12px;
@@ -966,7 +965,7 @@
         word-break: break-word;
       }
       #gpu-raw {
-        margin-top: 12px;
+        margin-top: 0;
         background: var(--bg0);
         border: 1px solid var(--border);
         border-radius: 8px;
@@ -977,6 +976,128 @@
         height: 120px;
         overflow-y: auto;
         white-space: pre-wrap;
+      }
+
+      /* Benchmark sub-sections inside GPU screen */
+      .bench-section {
+        background: var(--bg2);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 16px 18px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .bench-section h3 {
+        font-size: 13px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: var(--text);
+      }
+      .bench-section .hint {
+        color: var(--text3);
+        font-size: 11px;
+        margin-top: -4px;
+      }
+      .bench-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 10px;
+      }
+      .bench-field {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .bench-field label {
+        font-size: 10px;
+        color: var(--text3);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+      .bench-actions {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .bench-actions .spacer {
+        flex: 1;
+      }
+      .bench-progress .bar-wrap {
+        height: 8px;
+        background: var(--bg0);
+        border-radius: 8px;
+        overflow: hidden;
+        border: 1px solid var(--border);
+      }
+      .bench-progress .bar-fill {
+        height: 100%;
+        width: 0%;
+        background: linear-gradient(90deg, var(--accent), var(--accent2));
+        transition: width 0.3s;
+      }
+      #bench-log {
+        background: var(--bg0);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 10px 12px;
+        font-family: "Courier New", monospace;
+        font-size: 11px;
+        color: var(--text2);
+        height: 200px;
+        overflow-y: auto;
+        white-space: pre-wrap;
+        line-height: 1.5;
+      }
+      #bench-log .err {
+        color: var(--danger);
+      }
+      #bench-log .ok {
+        color: var(--success);
+      }
+      #bench-results-list {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        max-height: 220px;
+        overflow-y: auto;
+      }
+      .bench-result-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        background: var(--bg0);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 8px 10px;
+        font-size: 11px;
+      }
+      .bench-result-row .br-meta {
+        color: var(--text3);
+        font-size: 10px;
+      }
+      .bench-result-row .br-actions {
+        display: flex;
+        gap: 6px;
+      }
+      #bench-result-detail {
+        background: var(--bg0);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 10px 12px;
+        font-family: "Courier New", monospace;
+        font-size: 11px;
+        color: var(--text2);
+        max-height: 280px;
+        overflow: auto;
+        white-space: pre-wrap;
+        display: none;
+      }
+      #bench-result-detail.visible {
+        display: block;
       }
 
       .models-header {
@@ -2538,6 +2659,129 @@ face asymmetry, eyes asymmetry, deformed eyes, open mouth, cartoon, painting, bl
             </div>
           </div>
           <div id="gpu-raw"></div>
+
+          <!-- ── Benchmark Setup ── -->
+          <div class="bench-section">
+            <h3>⚙️ Benchmark Setup</h3>
+            <p class="hint">
+              Configure a multi-turn agent benchmark via
+              <code>scripts/agent_bench.py</code>. Tasks exercise context growth,
+              KV cache management, and tool-call latency on your GPU.
+            </p>
+            <div class="bench-grid">
+              <div class="bench-field">
+                <label for="bench-models">Models (comma-separated)</label>
+                <input
+                  class="field-input"
+                  id="bench-models"
+                  type="text"
+                  placeholder="llama3.2:3b"
+                  value="llama3.2:3b"
+                />
+              </div>
+              <div class="bench-field">
+                <label for="bench-tasks">Tasks (comma-separated, blank = all)</label>
+                <input
+                  class="field-input"
+                  id="bench-tasks"
+                  type="text"
+                  placeholder="code_debugger,research_synth"
+                />
+              </div>
+              <div class="bench-field">
+                <label for="bench-conditions">Conditions</label>
+                <input
+                  class="field-input"
+                  id="bench-conditions"
+                  type="text"
+                  value="raw,autotune"
+                />
+              </div>
+              <div class="bench-field">
+                <label for="bench-trials">Trials per condition</label>
+                <input
+                  class="field-input"
+                  id="bench-trials"
+                  type="number"
+                  min="1"
+                  value="2"
+                />
+              </div>
+              <div class="bench-field">
+                <label for="bench-output">Output file (optional)</label>
+                <input
+                  class="field-input"
+                  id="bench-output"
+                  type="text"
+                  placeholder="benchmark_results/agent_bench_results.json"
+                />
+              </div>
+              <div class="bench-field">
+                <label>&nbsp;</label>
+                <label
+                  style="
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                    font-size: 12px;
+                    color: var(--text2);
+                    text-transform: none;
+                    letter-spacing: 0;
+                  "
+                >
+                  <input
+                    type="checkbox"
+                    id="bench-dry-run"
+                    style="accent-color: var(--accent)"
+                  />
+                  Dry-run (no Ollama needed)
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <!-- ── Run Benchmark ── -->
+          <div class="bench-section bench-progress">
+            <h3>▶ Run Benchmark</h3>
+            <div class="bench-actions">
+              <button class="btn btn-primary" id="bench-start-btn">
+                ▶ Start Benchmark
+              </button>
+              <button class="btn btn-ghost" id="bench-stop-btn" disabled>
+                ■ Stop
+              </button>
+              <button class="btn btn-ghost btn-sm" id="bench-clear-log-btn">
+                Clear Log
+              </button>
+              <span class="spacer"></span>
+              <span class="catalog-badge" id="bench-status-badge">Idle</span>
+            </div>
+            <div class="bar-wrap">
+              <div class="bar-fill" id="bench-bar"></div>
+            </div>
+            <div id="bench-log"></div>
+          </div>
+
+          <!-- ── Previous Benchmarks ── -->
+          <div class="bench-section">
+            <h3>📊 Previous Benchmarks</h3>
+            <div class="bench-actions">
+              <button class="btn btn-ghost btn-sm" id="bench-refresh-results-btn">
+                ⟳ Refresh
+              </button>
+              <button class="btn btn-ghost btn-sm" id="bench-open-results-dir-btn">
+                📂 Open Results Folder
+              </button>
+              <span class="spacer"></span>
+              <span class="catalog-badge" id="bench-results-dir-badge"></span>
+            </div>
+            <div id="bench-results-list">
+              <div class="empty-state" style="padding: 12px">
+                <p>No benchmarks yet. Run one to see results here.</p>
+              </div>
+            </div>
+            <pre id="bench-result-detail"></pre>
+          </div>
         </div>
 
         <!-- ── Models Screen ── -->

@@ -1515,6 +1515,234 @@ async function loadGpuInfo() {
 $("#gpu-refresh-btn").addEventListener("click", loadGpuInfo);
 
 // ─────────────────────────────────────────────────────────────────────────────
+// BENCHMARK (lives on the GPU screen)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const benchState = {
+  running: false,
+  totalTrials: 0,
+  doneTrials: 0,
+};
+
+const benchLog = $<HTMLElement>("#bench-log");
+const benchBar = $<HTMLElement>("#bench-bar");
+const benchStartBtn = $<HTMLButtonElement>("#bench-start-btn");
+const benchStopBtn = $<HTMLButtonElement>("#bench-stop-btn");
+const benchClearLogBtn = $<HTMLButtonElement>("#bench-clear-log-btn");
+const benchStatusBadge = $<HTMLElement>("#bench-status-badge");
+const benchRefreshResultsBtn = $<HTMLButtonElement>(
+  "#bench-refresh-results-btn",
+);
+const benchOpenResultsDirBtn = $<HTMLButtonElement>(
+  "#bench-open-results-dir-btn",
+);
+const benchResultsList = $<HTMLElement>("#bench-results-list");
+const benchResultsDirBadge = $<HTMLElement>("#bench-results-dir-badge");
+const benchResultDetail = $<HTMLElement>("#bench-result-detail");
+
+function benchLogLine(text: string, cls: "" | "ok" | "err" = "") {
+  const line = document.createElement("div");
+  if (cls) line.className = cls;
+  line.textContent = text;
+  benchLog.appendChild(line);
+  benchLog.scrollTop = benchLog.scrollHeight;
+}
+
+function setBenchRunning(running: boolean) {
+  benchState.running = running;
+  benchStartBtn.disabled = running;
+  benchStopBtn.disabled = !running;
+  benchStartBtn.textContent = running ? "Running…" : "▶ Start Benchmark";
+  benchStatusBadge.textContent = running ? "Running…" : "Idle";
+}
+
+function readBenchConfig(): BenchmarkConfig {
+  const v = (id: string) => ($(`#${id}`) as HTMLInputElement).value.trim();
+  const trialsRaw = parseInt(v("bench-trials"), 10);
+  return {
+    models: v("bench-models"),
+    tasks: v("bench-tasks"),
+    conditions: v("bench-conditions") || "raw,autotune",
+    trials: Number.isFinite(trialsRaw) && trialsRaw > 0 ? trialsRaw : 2,
+    output: v("bench-output") || undefined,
+    dryRun: ($("#bench-dry-run") as HTMLInputElement).checked,
+  };
+}
+
+function estimateTotalTrials(cfg: BenchmarkConfig): number {
+  const count = (s: string) =>
+    s.split(",").map((t) => t.trim()).filter(Boolean).length;
+  const models = Math.max(1, count(cfg.models));
+  // tasks blank => "all" — script currently has 2 tasks (code_debugger, research_synth)
+  const tasks = cfg.tasks ? Math.max(1, count(cfg.tasks)) : 2;
+  const conditions = Math.max(1, count(cfg.conditions));
+  return models * tasks * conditions * Math.max(1, cfg.trials);
+}
+
+benchStartBtn.addEventListener("click", async () => {
+  const cfg = readBenchConfig();
+  if (!cfg.models) {
+    showToast("Please specify at least one model", "error");
+    return;
+  }
+  benchLog.innerHTML = "";
+  benchBar.style.width = "0%";
+  benchState.totalTrials = estimateTotalTrials(cfg);
+  benchState.doneTrials = 0;
+  benchLogLine(`Starting benchmark with config:`);
+  benchLogLine(JSON.stringify(cfg, null, 2));
+  benchLogLine(`Estimated trials: ${benchState.totalTrials}`);
+
+  setBenchRunning(true);
+  const res = await window.My.bench.start(cfg);
+  if (!res.ok) {
+    benchLogLine(`✗ Failed to start: ${res.error}`, "err");
+    showToast(`Benchmark failed to start: ${res.error}`, "error", 6000);
+    setBenchRunning(false);
+  }
+});
+
+benchStopBtn.addEventListener("click", async () => {
+  await window.My.bench.stop();
+  benchLogLine("■ Benchmark stopped by user", "err");
+  setBenchRunning(false);
+});
+
+benchClearLogBtn.addEventListener("click", () => {
+  benchLog.innerHTML = "";
+});
+
+window.My.bench.onEvent((msg: BridgeMsg) => {
+  switch (msg.type) {
+    case "status":
+      benchLogLine(`ℹ ${msg["message"]}`);
+      break;
+    case "log": {
+      const text = String(msg["text"] ?? "");
+      benchLogLine(text);
+      // Heuristic: count completed trials based on the script's
+      // "✓ ... turns, ...s" / "✗ ..." per-trial output line.
+      if (/^\s*[✓✗]\s+\d+\s+turns/.test(text) || /\b\d+\s+turns,\s/.test(text)) {
+        benchState.doneTrials += 1;
+        if (benchState.totalTrials > 0) {
+          const pct = Math.min(
+            100,
+            (benchState.doneTrials / benchState.totalTrials) * 100,
+          );
+          benchBar.style.width = `${pct.toFixed(1)}%`;
+        }
+      }
+      if (/^Results written to /.test(text)) {
+        // Refresh history when results land.
+        refreshBenchResults();
+      }
+      break;
+    }
+    case "stderr": {
+      const t = String(msg["text"] ?? "");
+      if (
+        t &&
+        !t.includes("FutureWarning") &&
+        !t.includes("UserWarning") &&
+        !t.includes("warnings.warn")
+      ) {
+        benchLogLine(t);
+      }
+      break;
+    }
+    case "error":
+      benchLogLine(`✗ ${msg["message"]}`, "err");
+      showToast(`Benchmark error: ${msg["message"]}`, "error", 6000);
+      setBenchRunning(false);
+      break;
+    case "exit":
+      if (msg["code"] === 0) {
+        benchLogLine(`✓ Benchmark complete (exit 0)`, "ok");
+        benchBar.style.width = "100%";
+        showToast("Benchmark complete ✓", "success");
+        refreshBenchResults();
+      } else {
+        benchLogLine(`Process exited with code ${msg["code"]}`, "err");
+      }
+      setBenchRunning(false);
+      break;
+  }
+});
+
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function formatDate(ms: number): string {
+  try {
+    return new Date(ms).toLocaleString();
+  } catch {
+    return String(ms);
+  }
+}
+
+async function refreshBenchResults() {
+  const res = await window.My.bench.listResults();
+  benchResultsDirBadge.textContent = res.dir;
+  benchResultsDirBadge.title = res.dir;
+  if (!res.ok) {
+    benchResultsList.innerHTML = `<div class="empty-state" style="padding: 12px"><p>Failed to list results: ${res.error ?? "unknown error"}</p></div>`;
+    return;
+  }
+  if (!res.files.length) {
+    benchResultsList.innerHTML = `<div class="empty-state" style="padding: 12px"><p>No benchmarks yet. Run one to see results here.</p></div>`;
+    return;
+  }
+  benchResultsList.innerHTML = "";
+  for (const f of res.files) {
+    const row = document.createElement("div");
+    row.className = "bench-result-row";
+    row.innerHTML = `
+      <div>
+        <div>${f.name}</div>
+        <div class="br-meta">${formatDate(f.mtime)} · ${formatBytes(f.size)}</div>
+      </div>
+      <div class="br-actions">
+        <button class="btn btn-ghost btn-sm" data-act="view">View</button>
+      </div>
+    `;
+    const viewBtn = row.querySelector<HTMLButtonElement>('[data-act="view"]')!;
+    viewBtn.addEventListener("click", () => viewBenchResult(f.path));
+    benchResultsList.appendChild(row);
+  }
+}
+
+async function viewBenchResult(filePath: string) {
+  const res = await window.My.bench.getResult(filePath);
+  if (!res.ok) {
+    showToast(`Failed to read result: ${res.error}`, "error", 6000);
+    return;
+  }
+  benchResultDetail.textContent = JSON.stringify(res.data, null, 2);
+  benchResultDetail.classList.add("visible");
+  benchResultDetail.scrollTop = 0;
+}
+
+benchRefreshResultsBtn.addEventListener("click", refreshBenchResults);
+benchOpenResultsDirBtn.addEventListener("click", async () => {
+  await window.My.bench.openResultsDir();
+});
+
+// Refresh benchmark history when the GPU tab is opened.
+document
+  .querySelectorAll<HTMLElement>('.nav-btn[data-screen="gpu"]')
+  .forEach((btn) => {
+    btn.addEventListener("click", () => {
+      refreshBenchResults();
+    });
+  });
+
+// Initial load (so the list is populated even if user opens the screen directly).
+refreshBenchResults();
+
+// ─────────────────────────────────────────────────────────────────────────────
 // TRAIN SCREEN
 // ─────────────────────────────────────────────────────────────────────────────
 
