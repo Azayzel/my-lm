@@ -133,6 +133,7 @@ For BookMind, copy `.env.example` to `.env` and fill in your MongoDB Atlas conne
 | [docs/cli.md](docs/cli.md)                   | Standalone CLI tools (`scripts/`)                  |
 | [docs/bookmind.md](docs/bookmind.md)         | BookMind RAG configuration                         |
 | [docs/packaging.md](docs/packaging.md)       | Building installers                                |
+| [docs/benchmarking.md](#-benchmarking)       | Agent benchmark harness                            |
 | [CONTRIBUTING.md](CONTRIBUTING.md)           | How to contribute                                  |
 | [SECURITY.md](SECURITY.md)                   | Reporting vulnerabilities                          |
 
@@ -164,7 +165,7 @@ my-lm/
 └── docs/            Long-form documentation
 ```
 
-`models/` and `outputs/` are runtime-only and gitignored — they hold multi-GB model weights and generated images.
+`models/`, `outputs/`, and `benchmark_results/` are runtime-only and gitignored.
 
 ---
 
@@ -179,6 +180,46 @@ The app is designed so no single step blows out VRAM:
 - Training uses **4-bit NF4 quantization** + gradient checkpointing
 
 > **Don't run chat + image + training simultaneously** — they each want the whole GPU.
+
+---
+
+## 📊 Benchmarking
+
+My-LM includes a **multi-turn agent benchmark** (`scripts/agent_bench.py`) that measures LLM inference performance in agentic workloads — where context accumulates across turns and fixed KV windows can cause model reloads.
+
+### What it measures
+
+| Metric | Why it matters |
+| ------ | -------------- |
+| TTFT (time to first token) | Raw responsiveness per turn |
+| TTFT slope (ms/turn) | How latency grows as context accumulates |
+| Model reloads | Cold restarts caused by `num_ctx` changes |
+| Swap events | macOS/Linux memory pressure detection |
+| Peak RAM | KV cache memory footprint |
+| Tool-call errors | Format reliability under different temperatures |
+| Context tokens (final) | Context drift / trimming effectiveness |
+| Task success rate | End-to-end completion |
+
+### Tasks
+
+- **`code_debugger`** — read buggy Python files, run tests, identify failures, write fixes. Context grows with each file read and test output.
+- **`research_synth`** — read research documents, cross-reference findings, produce a structured synthesis. Context grows steadily with each doc.
+
+### Quick start
+
+```bash
+# Dry-run — validate task definitions, no Ollama required:
+python scripts/agent_bench.py --dry-run
+
+# Quick run (2 tasks, 2 trials):
+python scripts/agent_bench.py --models llama3.2:3b \
+    --tasks code_debugger,research_synth --trials 2
+
+# Full run (all tasks, 5 trials):
+python scripts/agent_bench.py
+```
+
+Results are written to `benchmark_results/` as both JSON (raw data) and Markdown (formatted report). See the `--help` flag for all options.
 
 ---
 
