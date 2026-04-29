@@ -1,0 +1,15 @@
+Title: Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks
+Authors: Lewis et al., 2020
+
+Abstract: Large pre-trained language models store factual knowledge in their parameters
+but struggle with knowledge-intensive tasks. We propose RAG — models that combine
+pre-trained parametric memory with a non-parametric retrieval component. RAG models
+retrieve relevant passages from a dense vector index and condition generation on them.
+On open-domain QA, RAG sets new state-of-the-art on three benchmarks, outperforming
+extractive and closed-book approaches. The retriever is trained end-to-end alongside
+the generator, enabling it to learn what to retrieve for downstream tasks.
+
+Key findings:
+- RAG-Sequence and RAG-Token marginalize over retrieved documents differently
+- End-to-end training of retriever + generator outperforms pipeline approaches
+- RAG generates more specific, diverse, and factual text than pure parametric models

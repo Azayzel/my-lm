@@ -1,0 +1,15 @@
+Title: Dense Passage Retrieval for Open-Domain Question Answering
+Authors: Karpukhin et al., 2020
+
+Abstract: Open-domain question answering relies on efficient passage retrieval to find
+relevant contexts. We show that a simple dual-encoder framework trained on QA pairs —
+Dense Passage Retrieval (DPR) — significantly outperforms traditional sparse methods
+like BM25. DPR uses BERT-based encoders for questions and passages, trained with
+in-batch negatives and hard negatives mined from BM25. On multiple QA benchmarks, DPR
+improves top-20 passage retrieval accuracy by 9–19% over BM25 and leads to substantial
+gains when plugged into extractive QA pipelines.
+
+Key findings:
+- Dense representations outperform TF-IDF/BM25 for passage retrieval in QA
+- Hard negative mining from BM25 is critical for training effective dense retrievers
+- In-batch negative training is efficient and effective for dual-encoder models
