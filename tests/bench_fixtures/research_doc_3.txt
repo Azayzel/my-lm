@@ -1,0 +1,17 @@
+Title: Self-RAG — Learning to Retrieve, Generate, and Critique through Self-Reflection
+Authors: Asai et al., 2023
+
+Abstract: Despite the success of RAG, existing methods retrieve indiscriminately —
+regardless of whether retrieval is needed — and never verify whether retrieved passages
+actually support the generated output. Self-RAG trains a single LM to adaptively
+retrieve passages on demand and generate special reflection tokens to self-evaluate its
+own output. The model learns four types of reflection token: Retrieve (should I
+retrieve?), IsRel (is this passage relevant?), IsSup (does the passage support my
+claim?), and IsUse (is this response useful?). Self-RAG significantly outperforms
+vanilla RAG and ChatGPT on six tasks spanning reasoning, fact verification, and
+long-form generation — without sacrificing the versatility of the base LM.
+
+Key findings:
+- Adaptive retrieval prevents unnecessary retrieval and reduces latency
+- Reflection tokens enable the model to self-correct without external critics
+- Training with critic-guided data outperforms simple distillation
