@@ -38,6 +38,9 @@ Thumbs.db
 .vscode/
 *.swp
 
+# Benchmark results (regenerated on each run)
+benchmark_results/
+
 # Tooling caches
 .claude/
 
