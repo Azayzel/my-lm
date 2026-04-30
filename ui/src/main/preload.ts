@@ -74,6 +74,8 @@ contextBridge.exposeInMainWorld("My", {
   // Media
   media: {
     list: (subdir?: string) => ipcRenderer.invoke("media:list", subdir),
+    getThumbnail: (filePath: string, maxSize?: number) =>
+      ipcRenderer.invoke("media:getThumbnail", filePath, maxSize),
     createFolder: (name: string) =>
       ipcRenderer.invoke("media:createFolder", name),
     deleteFolder: (relPath: string) =>
@@ -147,6 +149,7 @@ contextBridge.exposeInMainWorld("My", {
   system: {
     diagnostics: () => ipcRenderer.invoke("system:diagnostics"),
     gpuInfo: () => ipcRenderer.invoke("system:gpuInfo"),
+    clearThumbnailCache: () => ipcRenderer.invoke("system:clearThumbnailCache"),
   },
 
   onPaths: (

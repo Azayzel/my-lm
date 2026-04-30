@@ -63,6 +63,15 @@ interface MyAPI {
   };
   media: {
     list(subdir?: string): Promise<MediaListing>;
+    getThumbnail(
+      filePath: string,
+      maxSize?: number,
+    ): Promise<{
+      ok: boolean;
+      path?: string;
+      cached?: boolean;
+      error?: string;
+    }>;
     createFolder(
       name: string,
     ): Promise<{ ok: boolean; path?: string; error?: string }>;
@@ -97,9 +106,7 @@ interface MyAPI {
     onEvent(cb: (msg: BridgeMsg) => void): () => void;
   };
   bench: {
-    start(
-      config: BenchmarkConfig,
-    ): Promise<{ ok: boolean; error?: string }>;
+    start(config: BenchmarkConfig): Promise<{ ok: boolean; error?: string }>;
     stop(): Promise<{ ok: boolean }>;
     status(): Promise<{ running: boolean; resultsDir: string }>;
     listResults(): Promise<{
@@ -123,6 +130,12 @@ interface MyAPI {
   system: {
     diagnostics(): Promise<SystemDiagnostics>;
     gpuInfo(): Promise<GpuInfoResponse>;
+    clearThumbnailCache(): Promise<{
+      ok: boolean;
+      removedFiles?: number;
+      removedBytes?: number;
+      error?: string;
+    }>;
   };
   onPaths(cb: (paths: AppPaths) => void): void;
 }

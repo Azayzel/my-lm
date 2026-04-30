@@ -994,6 +994,48 @@ genImage.addEventListener("click", () => {
 let mediaCurrentDir = ""; // "" = outputs root
 let mediaRenderToken = 0;
 const MEDIA_RENDER_BATCH_SIZE = 48;
+const MEDIA_PLACEHOLDER_DATA_URL =
+  "data:image/gif;base64,R0lGODlhAQABAAAAACwAAAAAAQABAAA=";
+const thumbnailRequestCache = new Map<string, Promise<string>>();
+
+let mediaThumbObserver: IntersectionObserver | null = null;
+
+function ensureMediaThumbObserver() {
+  if (mediaThumbObserver) return mediaThumbObserver;
+  mediaThumbObserver = new IntersectionObserver(
+    (entries) => {
+      entries.forEach((entry) => {
+        if (!entry.isIntersecting) return;
+        const img = entry.target as HTMLImageElement;
+        const fullPath = img.dataset.fullPath;
+        if (!fullPath) return;
+        mediaThumbObserver?.unobserve(img);
+        void loadMediaThumbnail(img, fullPath);
+      });
+    },
+    { rootMargin: "600px 0px" },
+  );
+  return mediaThumbObserver;
+}
+
+async function loadMediaThumbnail(img: HTMLImageElement, fullPath: string) {
+  try {
+    let pending = thumbnailRequestCache.get(fullPath);
+    if (!pending) {
+      pending = window.My.media
+        .getThumbnail(fullPath, 360)
+        .then((res) => {
+          if (res.ok && res.path) return `file://${res.path}`;
+          return `file://${fullPath}`;
+        })
+        .catch(() => `file://${fullPath}`);
+      thumbnailRequestCache.set(fullPath, pending);
+    }
+    img.src = await pending;
+  } catch {
+    img.src = `file://${fullPath}`;
+  }
+}
 
 function renderMediaBreadcrumb() {
   const bc = $("#media-breadcrumb");
@@ -1094,10 +1136,10 @@ async function loadMediaGrid() {
     const batch = files.slice(i, i + MEDIA_RENDER_BATCH_SIZE);
     const frag = document.createDocumentFragment();
     batch.forEach((f) => {
-    const card = document.createElement("div");
-    card.className = "media-card";
-    card.innerHTML = `
-      <img src="file://${f.path}" loading="lazy" decoding="async" alt="${f.name}" />
+      const card = document.createElement("div");
+      card.className = "media-card";
+      card.innerHTML = `
+      <img src="${MEDIA_PLACEHOLDER_DATA_URL}" loading="lazy" decoding="async" alt="${f.name}" />
       <div class="media-card-info">
         <div class="media-card-name" title="${f.name}">${f.name}</div>
       </div>
@@ -1107,48 +1149,49 @@ async function loadMediaGrid() {
         <button title="Delete" class="mc-del">🗑</button>
       </div>
     `;
-    card
-      .querySelector("img")!
-      .addEventListener("click", () =>
+      const imgEl = card.querySelector("img") as HTMLImageElement;
+      imgEl.dataset.fullPath = f.path;
+      ensureMediaThumbObserver().observe(imgEl);
+      imgEl.addEventListener("click", () =>
         openLightbox(`file://${f.path}`, f.path),
       );
-    card.querySelector(".mc-open")!.addEventListener("click", (e) => {
-      e.stopPropagation();
-      window.My.media.open(f.path);
-    });
-    card.querySelector(".mc-move")!.addEventListener("click", async (e) => {
-      e.stopPropagation();
-      // Build a list of available destinations: parent ("outputs root") + sibling folders
-      const destinations = ["(root)"];
-      if (mediaCurrentDir) destinations.push("(root)");
-      folderNames.forEach((fn) => destinations.push(fn));
+      card.querySelector(".mc-open")!.addEventListener("click", (e) => {
+        e.stopPropagation();
+        window.My.media.open(f.path);
+      });
+      card.querySelector(".mc-move")!.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        // Build a list of available destinations: parent ("outputs root") + sibling folders
+        const destinations = ["(root)"];
+        if (mediaCurrentDir) destinations.push("(root)");
+        folderNames.forEach((fn) => destinations.push(fn));
 
-      const dest = await askInput(
-        "Move to folder",
-        `Move "${f.name}" to which folder? Type a folder name (existing or new).`,
-        "e.g. favorites",
-        folderNames[0] || "",
-      );
-      if (!dest) return;
-      const targetFolder = dest === "(root)" ? "" : dest;
-      const res = await window.My.media.move(f.path, targetFolder);
-      if (res.ok) {
-        card.remove();
-        showToast(`Moved to ${targetFolder || "root"}`, "success");
-      } else {
-        showToast(`Move failed: ${res.error}`, "error");
-      }
-    });
-    card.querySelector(".mc-del")!.addEventListener("click", async (e) => {
-      e.stopPropagation();
-      const ok = await askConfirm("Delete image?", f.name);
-      if (!ok) return;
-      const res = await window.My.media.delete(f.path);
-      if (res.ok) {
-        card.remove();
-        showToast("Deleted", "success");
-      } else showToast(`Error: ${res.error}`, "error");
-    });
+        const dest = await askInput(
+          "Move to folder",
+          `Move "${f.name}" to which folder? Type a folder name (existing or new).`,
+          "e.g. favorites",
+          folderNames[0] || "",
+        );
+        if (!dest) return;
+        const targetFolder = dest === "(root)" ? "" : dest;
+        const res = await window.My.media.move(f.path, targetFolder);
+        if (res.ok) {
+          card.remove();
+          showToast(`Moved to ${targetFolder || "root"}`, "success");
+        } else {
+          showToast(`Move failed: ${res.error}`, "error");
+        }
+      });
+      card.querySelector(".mc-del")!.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        const ok = await askConfirm("Delete image?", f.name);
+        if (!ok) return;
+        const res = await window.My.media.delete(f.path);
+        if (res.ok) {
+          card.remove();
+          showToast("Deleted", "success");
+        } else showToast(`Error: ${res.error}`, "error");
+      });
       frag.appendChild(card);
     });
     grid.appendChild(frag);
@@ -1464,6 +1507,9 @@ $("#run-diagnostics-btn").addEventListener("click", async () => {
 
 const gpuContent = $<HTMLDivElement>("#gpu-content");
 const gpuRaw = $<HTMLDivElement>("#gpu-raw");
+const gpuClearThumbCacheBtn = $<HTMLButtonElement>(
+  "#gpu-clear-thumb-cache-btn",
+);
 
 async function loadGpuInfo() {
   gpuContent.innerHTML =
@@ -1526,6 +1572,42 @@ async function loadGpuInfo() {
 
 $("#gpu-refresh-btn").addEventListener("click", loadGpuInfo);
 
+gpuClearThumbCacheBtn.addEventListener("click", async () => {
+  gpuClearThumbCacheBtn.disabled = true;
+  try {
+    const res = await window.My.system.clearThumbnailCache();
+    if (!res.ok) {
+      showToast(
+        `Failed to clear thumbnail cache: ${res.error ?? "unknown"}`,
+        "error",
+        5000,
+      );
+      return;
+    }
+
+    thumbnailRequestCache.clear();
+
+    const mb = ((res.removedBytes ?? 0) / (1024 * 1024)).toFixed(2);
+    showToast(
+      `Thumbnail cache cleared (${res.removedFiles ?? 0} files, ${mb} MB)`,
+      "success",
+    );
+    gpuRaw.textContent = JSON.stringify(
+      {
+        thumbnailCache: {
+          cleared: true,
+          removedFiles: res.removedFiles ?? 0,
+          removedBytes: res.removedBytes ?? 0,
+        },
+      },
+      null,
+      2,
+    );
+  } finally {
+    gpuClearThumbCacheBtn.disabled = false;
+  }
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // BENCHMARK (lives on the GPU screen)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1583,7 +1665,10 @@ function readBenchConfig(): BenchmarkConfig {
 
 function estimateTotalTrials(cfg: BenchmarkConfig): number {
   const count = (s: string) =>
-    s.split(",").map((t) => t.trim()).filter(Boolean).length;
+    s
+      .split(",")
+      .map((t) => t.trim())
+      .filter(Boolean).length;
   const models = Math.max(1, count(cfg.models));
   // tasks blank => "all" — script currently has 2 tasks (code_debugger, research_synth)
   const tasks = cfg.tasks ? Math.max(1, count(cfg.tasks)) : 2;
@@ -1634,7 +1719,10 @@ window.My.bench.onEvent((msg: BridgeMsg) => {
       benchLogLine(text);
       // Heuristic: count completed trials based on the script's
       // "✓ ... turns, ...s" / "✗ ..." per-trial output line.
-      if (/^\s*[✓✗]\s+\d+\s+turns/.test(text) || /\b\d+\s+turns,\s/.test(text)) {
+      if (
+        /^\s*[✓✗]\s+\d+\s+turns/.test(text) ||
+        /\b\d+\s+turns,\s/.test(text)
+      ) {
         benchState.doneTrials += 1;
         if (benchState.totalTrials > 0) {
           const pct = Math.min(
@@ -1753,7 +1841,10 @@ interface BenchSummary {
   success_rate: number;
   avg_context_tokens_final: number;
 }
-interface BenchTrial { task_success: boolean; error?: string }
+interface BenchTrial {
+  task_success: boolean;
+  error?: string;
+}
 interface BenchData {
   meta?: { models?: string[]; tasks?: string[]; conditions?: string[] };
   trials?: BenchTrial[];
@@ -1835,7 +1926,11 @@ function renderBenchCharts(data: BenchData) {
   );
 }
 
-function chartBlock(title: string, svg: string, banner: string = ""): HTMLElement {
+function chartBlock(
+  title: string,
+  svg: string,
+  banner: string = "",
+): HTMLElement {
   const div = document.createElement("div");
   div.className = "bench-chart";
   div.innerHTML = `<h4>${title}</h4>${banner}${svg}`;
@@ -1935,24 +2030,108 @@ const trainLog = $<HTMLElement>("#train-log");
 const trainStartBtn = $<HTMLButtonElement>("#train-start-btn");
 const trainStopBtn = $<HTMLButtonElement>("#train-stop-btn");
 const trainMergeBtn = $<HTMLButtonElement>("#train-merge-btn");
+const trainTestBtn = $<HTMLButtonElement>("#train-test-btn");
 const trainMStep = $("#train-m-step");
 const trainMEpoch = $("#train-m-epoch");
 const trainMLoss = $("#train-m-loss");
 const trainMLr = $("#train-m-lr");
+let trainTestBusy = false;
 
-function trainLogLine(text: string, cls: "" | "ok" | "err" = "") {
+function trainLogLine(
+  text: string,
+  cls: "" | "ok" | "err" = "",
+  kind: "sys" | "info" | "cmd" | "warn" = "sys",
+) {
   const line = document.createElement("div");
-  if (cls) line.className = cls;
-  line.textContent = text;
+  line.className = `line k-${kind}`;
+  if (cls) line.classList.add(cls);
+
+  const ts = document.createElement("span");
+  ts.className = "ts";
+  ts.textContent = new Date().toLocaleTimeString([], {
+    hour12: false,
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+
+  const prompt = document.createElement("span");
+  prompt.className = "prompt";
+  prompt.textContent = cls === "err" ? "!" : cls === "ok" ? "✓" : "$";
+
+  const msg = document.createElement("span");
+  msg.className = "msg";
+  msg.textContent = text;
+
+  line.appendChild(ts);
+  line.appendChild(prompt);
+  line.appendChild(msg);
   trainLog.appendChild(line);
   trainLog.scrollTop = trainLog.scrollHeight;
+}
+
+function trainLogRaw(rawText: string) {
+  const lines = String(rawText)
+    .split(/\r?\n/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  for (const line of lines) {
+    // Some bridge steps emit JSONL; decode and render friendly log lines.
+    if (line.startsWith("{") && line.endsWith("}")) {
+      try {
+        const parsed = JSON.parse(line);
+        const type = String(parsed.type || "");
+        if (type === "status" && parsed.message) {
+          trainLogLine(String(parsed.message), "", "info");
+          continue;
+        }
+        if (type === "done" && parsed.output) {
+          trainLogLine(`Merged model saved to ${parsed.output}`, "ok");
+          continue;
+        }
+      } catch {
+        // non-JSON line, fall through
+      }
+    }
+    trainLogLine(line);
+  }
+}
+
+function setTrainTestBusy(busy: boolean) {
+  trainTestBusy = busy;
+  trainTestBtn.disabled = busy || trainState.running;
+  trainTestBtn.textContent = busy ? "⏳ Testing…" : "▶ Test in Chat";
 }
 
 function setTrainRunning(running: boolean) {
   trainState.running = running;
   trainStartBtn.disabled = running;
   trainStopBtn.disabled = !running;
+  trainTestBtn.disabled = running || trainTestBusy;
   trainStartBtn.textContent = running ? "Training…" : "▶ Start Training";
+}
+
+async function runMergeFromTrain(cfg: TrainConfig) {
+  if (!cfg.model_path || !cfg.output_dir) {
+    return {
+      ok: false,
+      error: "Set base model + adapter output directory first",
+      mergedPath: "",
+    };
+  }
+  const mergedPath = cfg.output_dir + "-merged";
+  trainLogLine(`merge ${cfg.output_dir} -> ${mergedPath}`, "", "cmd");
+  const res = await window.My.train.merge(
+    cfg.model_path,
+    cfg.output_dir,
+    mergedPath,
+  );
+  if (res.ok) {
+    trainLogLine(`Merged model saved to ${mergedPath}`, "ok");
+    trainTestBtn.dataset["mergedPath"] = mergedPath;
+    return { ok: true, mergedPath };
+  }
+  return { ok: false, error: res.error || "Merge failed", mergedPath };
 }
 
 // Browse handlers — directory for model/output, file for dataset
@@ -2031,30 +2210,54 @@ trainStopBtn.addEventListener("click", async () => {
 
 trainMergeBtn.addEventListener("click", async () => {
   const cfg = readTrainConfig();
+  const res = await runMergeFromTrain(cfg);
+  if (res.ok) {
+    showToast("Merge complete ✓", "success");
+    trainTestBtn.disabled = false;
+  } else {
+    trainLogLine(`Merge failed: ${res.error}`, "err");
+    showToast(`Merge failed: ${res.error}`, "error", 6000);
+  }
+});
+
+trainTestBtn.addEventListener("click", async () => {
+  const cfg = readTrainConfig();
   if (!cfg.model_path || !cfg.output_dir) {
     showToast("Set base model + adapter output directory first", "error");
     return;
   }
-  const mergedPath = cfg.output_dir + "-merged";
-  trainLogLine(`Merging adapter from ${cfg.output_dir} into ${mergedPath}...`);
-  const res = await window.My.train.merge(
-    cfg.model_path,
-    cfg.output_dir,
-    mergedPath,
-  );
-  if (res.ok) {
-    trainLogLine(`✓ Merged model saved to ${mergedPath}`, "ok");
-    showToast("Merge complete ✓", "success");
-  } else {
-    trainLogLine(`✗ Merge failed: ${res.error}`, "err");
-    showToast(`Merge failed: ${res.error}`, "error", 6000);
+
+  setTrainTestBusy(true);
+  try {
+    const mergeRes = await runMergeFromTrain(cfg);
+    if (!mergeRes.ok) {
+      trainLogLine(`Merge failed: ${mergeRes.error}`, "err");
+      showToast(`Merge failed: ${mergeRes.error}`, "error", 6000);
+      return;
+    }
+
+    const mergedPath = mergeRes.mergedPath;
+    trainLogLine(`load ${mergedPath}`, "", "cmd");
+    // Stop any running LLM first
+    await window.My.llm.stop();
+    const res = await window.My.llm.start(mergedPath);
+    if (!res.ok) {
+      trainLogLine(`Failed to load: ${res.error}`, "err");
+      showToast(`Load failed: ${res.error}`, "error", 6000);
+      return;
+    }
+    trainLogLine(`Model ready: ${mergedPath}`, "ok");
+    showToast("Trained model loaded — switching to Chat ✓", "success");
+    activateScreen("chat");
+  } finally {
+    setTrainTestBusy(false);
   }
 });
 
 window.My.train.onEvent((msg: BridgeMsg) => {
   switch (msg.type) {
     case "status":
-      trainLogLine(`ℹ ${msg["message"]}`);
+      trainLogLine(`${msg["message"]}`, "", "info");
       break;
     case "config":
       trainState.totalSteps = Number(msg["total_steps"]) || 0;
@@ -2077,10 +2280,10 @@ window.My.train.onEvent((msg: BridgeMsg) => {
       break;
     }
     case "epoch":
-      trainLogLine(`▶ Epoch ${msg["epoch"]} / ${msg["total"]}`);
+      trainLogLine(`epoch ${msg["epoch"]} / ${msg["total"]}`, "", "cmd");
       break;
     case "log":
-      trainLogLine(String(msg["text"] ?? ""));
+      trainLogRaw(String(msg["text"] ?? ""));
       break;
     case "stderr":
       // quiet filter — only show interesting stderr lines
@@ -2092,7 +2295,7 @@ window.My.train.onEvent((msg: BridgeMsg) => {
           !t.includes("UserWarning") &&
           !t.includes("warnings.warn")
         ) {
-          trainLogLine(t);
+          trainLogLine(t, "", "warn");
         }
       }
       break;
@@ -2104,6 +2307,7 @@ window.My.train.onEvent((msg: BridgeMsg) => {
       showToast("Training complete ✓", "success");
       trainBar.style.width = "100%";
       setTrainRunning(false);
+      trainTestBtn.disabled = false;
       break;
     case "error":
       trainLogLine(`✗ ${msg["message"]}`, "err");

@@ -1,6 +1,14 @@
-import { app, BrowserWindow, ipcMain, dialog, shell } from "electron";
+import {
+  app,
+  BrowserWindow,
+  ipcMain,
+  dialog,
+  shell,
+  nativeImage,
+} from "electron";
 import * as path from "path";
 import * as fs from "fs";
+import { createHash } from "crypto";
 import { spawn } from "child_process";
 import { LLMBridge } from "./llmBridge";
 import { ImageBridge } from "./imageBridge";
@@ -62,6 +70,8 @@ const modelManager = new ModelManager(SCRIPTS_DIR, MODELS_DIR);
 const configStore = new ConfigStore(
   path.join(app.getPath("userData"), "config.json"),
 );
+const THUMB_CACHE_DIR = path.join(app.getPath("userData"), "thumb-cache");
+fs.mkdirSync(THUMB_CACHE_DIR, { recursive: true });
 
 // Seed config from .env on first run (so existing users don't lose their setup)
 if (!configStore.isMongoConfigured()) {
@@ -295,9 +305,7 @@ ipcMain.handle("media:list", async (_e, subdir?: string) => {
     .sort((a, b) => a.name.localeCompare(b.name));
 
   const files = entries
-    .filter(
-      (e) => e.isFile() && /\.(png|jpg|jpeg|webp)$/i.test(e.name),
-    )
+    .filter((e) => e.isFile() && /\.(png|jpg|jpeg|webp)$/i.test(e.name))
     .map((e) => ({
       name: e.name,
       path: path.join(dir, e.name),
@@ -309,6 +317,53 @@ ipcMain.handle("media:list", async (_e, subdir?: string) => {
 
   return { folders, files };
 });
+
+ipcMain.handle(
+  "media:getThumbnail",
+  async (_e, filePath: string, maxSize = 360) => {
+    try {
+      const resolved = path.resolve(filePath);
+      const outputsResolved = path.resolve(OUTPUTS_DIR);
+      if (!resolved.startsWith(outputsResolved)) {
+        return { ok: false, error: "File is outside outputs directory" };
+      }
+      if (!fs.existsSync(resolved)) {
+        return { ok: false, error: "File not found" };
+      }
+
+      const stat = await fs.promises.stat(resolved);
+      const key = createHash("sha1")
+        .update(`${resolved}|${stat.mtimeMs}|${maxSize}`)
+        .digest("hex");
+      const cachedPath = path.join(THUMB_CACHE_DIR, `${key}.png`);
+
+      if (fs.existsSync(cachedPath)) {
+        return { ok: true, path: cachedPath, cached: true };
+      }
+
+      const img = nativeImage.createFromPath(resolved);
+      if (img.isEmpty()) {
+        return { ok: false, error: "Could not decode image" };
+      }
+
+      const sourceSize = img.getSize();
+      const maxDim = Math.max(sourceSize.width, sourceSize.height);
+      const scale = maxDim > maxSize ? maxSize / maxDim : 1;
+      const targetW = Math.max(1, Math.round(sourceSize.width * scale));
+      const targetH = Math.max(1, Math.round(sourceSize.height * scale));
+      const thumb = img.resize({
+        width: targetW,
+        height: targetH,
+        quality: "good",
+      });
+      await fs.promises.writeFile(cachedPath, thumb.toPNG());
+
+      return { ok: true, path: cachedPath, cached: false };
+    } catch (e: any) {
+      return { ok: false, error: e.message };
+    }
+  },
+);
 
 ipcMain.handle("media:createFolder", async (_e, name: string) => {
   try {
@@ -374,7 +429,8 @@ ipcMain.handle("books:start", async () => {
   if (!configStore.isMongoConfigured()) {
     return {
       ok: false,
-      error: "MongoDB not configured. Go to Settings and set up a connection first.",
+      error:
+        "MongoDB not configured. Go to Settings and set up a connection first.",
     };
   }
   bookBridge = new BookBridge(SCRIPTS_DIR, PYTHON, configStore.toEnv());
@@ -670,6 +726,33 @@ ipcMain.handle("system:gpuInfo", async () => {
     nvidia: nvidiaRows,
     nvidiaError: smi.ok ? null : smi.stderr || "nvidia-smi not available",
   };
+});
+
+ipcMain.handle("system:clearThumbnailCache", async () => {
+  try {
+    await fs.promises.mkdir(THUMB_CACHE_DIR, { recursive: true });
+    const names = await fs.promises.readdir(THUMB_CACHE_DIR);
+    let removedFiles = 0;
+    let removedBytes = 0;
+
+    for (const name of names) {
+      const full = path.join(THUMB_CACHE_DIR, name);
+      try {
+        const stat = await fs.promises.stat(full);
+        if (stat.isFile()) {
+          removedBytes += stat.size;
+          await fs.promises.unlink(full);
+          removedFiles += 1;
+        }
+      } catch {
+        // Ignore files that disappear during cleanup.
+      }
+    }
+
+    return { ok: true, removedFiles, removedBytes };
+  } catch (e: any) {
+    return { ok: false, error: e.message };
+  }
 });
 
 // ─── Config / Settings ───────────────────────────────────────────────────────

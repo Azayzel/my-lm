@@ -931,6 +931,10 @@
         justify-content: space-between;
         margin-bottom: 4px;
       }
+      .gpu-header .gpu-actions {
+        display: flex;
+        gap: 8px;
+      }
       .gpu-header h2 {
         font-size: 18px;
         font-weight: 700;
@@ -1651,14 +1655,51 @@
         background: var(--bg0);
         border: 1px solid var(--border);
         border-radius: 8px;
-        padding: 10px 12px;
-        font-family: "Courier New", monospace;
-        font-size: 11px;
+        padding: 12px 14px;
+        font-family: Consolas, "Cascadia Mono", "Courier New", monospace;
+        font-size: 12px;
         color: var(--text2);
-        height: 180px;
+        min-height: 260px;
+        max-height: 62vh;
+        height: 320px;
         overflow-y: auto;
         white-space: pre-wrap;
         line-height: 1.5;
+        resize: vertical;
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+      }
+      #train-log .line {
+        display: flex;
+        gap: 8px;
+        align-items: baseline;
+      }
+      #train-log .line + .line {
+        margin-top: 2px;
+      }
+      #train-log .ts {
+        color: #667085;
+        font-size: 10px;
+        min-width: 62px;
+      }
+      #train-log .prompt {
+        font-weight: 700;
+        min-width: 12px;
+      }
+      #train-log .msg {
+        flex: 1;
+        word-break: break-word;
+      }
+      #train-log .line.k-cmd .prompt {
+        color: #22c55e;
+      }
+      #train-log .line.k-info .prompt {
+        color: #60a5fa;
+      }
+      #train-log .line.k-warn .prompt {
+        color: #f59e0b;
+      }
+      #train-log .line.k-sys .prompt {
+        color: #94a3b8;
       }
       #train-log .err {
         color: var(--danger);
@@ -1666,9 +1707,56 @@
       #train-log .ok {
         color: var(--success);
       }
+      #train-log .err .prompt {
+        color: #f87171;
+      }
+      #train-log .ok .prompt {
+        color: #4ade80;
+      }
       .train-actions {
         display: flex;
         gap: 10px;
+      }
+      .train-log-shell {
+        background: linear-gradient(
+          180deg,
+          color-mix(in srgb, var(--bg2) 88%, #0b1220 12%),
+          var(--bg2)
+        );
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 10px;
+      }
+      .train-log-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 0 4px 8px;
+      }
+      .train-log-title {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: var(--text2);
+      }
+      .train-log-dots {
+        display: inline-flex;
+        gap: 6px;
+      }
+      .train-log-dots span {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+      }
+      .train-log-dots span:nth-child(1) {
+        background: #fb7185;
+      }
+      .train-log-dots span:nth-child(2) {
+        background: #f59e0b;
+      }
+      .train-log-dots span:nth-child(3) {
+        background: #22c55e;
       }
 
       /* ── Essentials (first-run) modal ──────────────────────────── */
@@ -2676,6 +2764,9 @@ face asymmetry, eyes asymmetry, deformed eyes, open mouth, cartoon, painting, bl
             <button class="btn btn-ghost" id="train-merge-btn">
               🔗 Merge Adapter
             </button>
+            <button class="btn btn-ghost" id="train-test-btn" disabled title="Merge adapter first, then test">
+              ▶ Test in Chat
+            </button>
           </div>
 
           <div class="train-progress">
@@ -2711,16 +2802,29 @@ face asymmetry, eyes asymmetry, deformed eyes, open mouth, cartoon, painting, bl
             </div>
           </div>
 
-          <div id="train-log"></div>
+          <div class="train-log-shell">
+            <div class="train-log-header">
+              <div class="train-log-dots">
+                <span></span><span></span><span></span>
+              </div>
+              <div class="train-log-title">my-lm train shell</div>
+            </div>
+            <div id="train-log"></div>
+          </div>
         </div>
 
         <!-- ── GPU Screen ── -->
         <div class="screen" id="screen-gpu">
           <div class="gpu-header">
             <h2>🖥️ GPU Information</h2>
-            <button class="btn btn-ghost btn-sm" id="gpu-refresh-btn">
-              ⟳ Refresh
-            </button>
+            <div class="gpu-actions">
+              <button class="btn btn-ghost btn-sm" id="gpu-clear-thumb-cache-btn">
+                🧹 Clear Thumb Cache
+              </button>
+              <button class="btn btn-ghost btn-sm" id="gpu-refresh-btn">
+                ⟳ Refresh
+              </button>
+            </div>
           </div>
           <div id="gpu-content">
             <div class="empty-state">
