@@ -992,6 +992,8 @@ genImage.addEventListener("click", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 let mediaCurrentDir = ""; // "" = outputs root
+let mediaRenderToken = 0;
+const MEDIA_RENDER_BATCH_SIZE = 48;
 
 function renderMediaBreadcrumb() {
   const bc = $("#media-breadcrumb");
@@ -1022,12 +1024,14 @@ function renderMediaBreadcrumb() {
 }
 
 async function loadMediaGrid() {
+  const renderToken = ++mediaRenderToken;
   const grid = $("#media-grid");
   grid.innerHTML =
     '<div class="empty-state"><div class="es-icon">⏳</div><p>Loading…</p></div>';
   renderMediaBreadcrumb();
 
   const listing = await window.My.media.list(mediaCurrentDir || undefined);
+  if (renderToken !== mediaRenderToken) return;
   const { folders, files } = listing;
 
   if (!folders.length && !files.length) {
@@ -1084,12 +1088,16 @@ async function loadMediaGrid() {
   // Collect folder names for the "move to" menu
   const folderNames = folders.map((f) => f.rel);
 
-  // Render image files
-  files.forEach((f) => {
+  // Render image files in batches so large folders stay responsive.
+  for (let i = 0; i < files.length; i += MEDIA_RENDER_BATCH_SIZE) {
+    if (renderToken !== mediaRenderToken) return;
+    const batch = files.slice(i, i + MEDIA_RENDER_BATCH_SIZE);
+    const frag = document.createDocumentFragment();
+    batch.forEach((f) => {
     const card = document.createElement("div");
     card.className = "media-card";
     card.innerHTML = `
-      <img src="file://${f.path}" loading="lazy" alt="${f.name}" />
+      <img src="file://${f.path}" loading="lazy" decoding="async" alt="${f.name}" />
       <div class="media-card-info">
         <div class="media-card-name" title="${f.name}">${f.name}</div>
       </div>
@@ -1141,8 +1149,12 @@ async function loadMediaGrid() {
         showToast("Deleted", "success");
       } else showToast(`Error: ${res.error}`, "error");
     });
-    grid.appendChild(card);
-  });
+      frag.appendChild(card);
+    });
+    grid.appendChild(frag);
+    // Yield to the browser so input/scroll stays smooth while rendering many cards.
+    await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+  }
 }
 
 $("#media-refresh-btn").addEventListener("click", loadMediaGrid);
@@ -1723,6 +1735,173 @@ async function viewBenchResult(filePath: string) {
   benchResultDetail.textContent = JSON.stringify(res.data, null, 2);
   benchResultDetail.classList.add("visible");
   benchResultDetail.scrollTop = 0;
+  renderBenchCharts(res.data);
+}
+
+interface BenchSummary {
+  task: string;
+  model: string;
+  condition: string;
+  n_trials: number;
+  avg_ttft_ms: number;
+  ttft_slope_ms_per_turn: number;
+  avg_model_reloads: number;
+  avg_wall_s: number;
+  avg_peak_ram_gb: number;
+  total_swap_events: number;
+  tool_call_errors: number;
+  success_rate: number;
+  avg_context_tokens_final: number;
+}
+interface BenchTrial { task_success: boolean; error?: string }
+interface BenchData {
+  meta?: { models?: string[]; tasks?: string[]; conditions?: string[] };
+  trials?: BenchTrial[];
+  summaries?: BenchSummary[];
+}
+
+const benchChartsEl = $<HTMLElement>("#bench-charts");
+
+function renderBenchCharts(data: BenchData) {
+  benchChartsEl.innerHTML = "";
+  benchChartsEl.classList.add("visible");
+
+  const summaries = data.summaries ?? [];
+  if (!summaries.length) {
+    benchChartsEl.innerHTML = `<div class="bench-chart"><h4>Charts</h4><div class="bc-empty">No summaries in this result file.</div></div>`;
+    return;
+  }
+
+  const allErrored = (data.trials ?? []).every((t) => !t.task_success);
+  const errBanner = allErrored
+    ? `<div class="bc-empty" style="color: var(--danger); margin-bottom: 6px;">All trials failed — metrics shown are from error paths only.</div>`
+    : "";
+
+  benchChartsEl.appendChild(
+    chartBlock(
+      "Avg wall time (s) by task × condition",
+      barChart(
+        summaries.map((s) => ({
+          label: `${s.task}\n${s.condition}`,
+          value: s.avg_wall_s,
+          ok: s.success_rate > 0,
+        })),
+        { unit: "s", decimals: 2 },
+      ),
+      errBanner,
+    ),
+  );
+
+  benchChartsEl.appendChild(
+    chartBlock(
+      "Success rate by condition",
+      barChart(
+        summaries.map((s) => ({
+          label: `${s.task}\n${s.condition}`,
+          value: s.success_rate * 100,
+          ok: s.success_rate > 0,
+        })),
+        { unit: "%", decimals: 0, max: 100 },
+      ),
+    ),
+  );
+
+  benchChartsEl.appendChild(
+    chartBlock(
+      "Avg TTFT (ms) by condition",
+      barChart(
+        summaries.map((s) => ({
+          label: `${s.task}\n${s.condition}`,
+          value: s.avg_ttft_ms,
+          ok: s.avg_ttft_ms > 0,
+        })),
+        { unit: "ms", decimals: 0 },
+      ),
+    ),
+  );
+
+  benchChartsEl.appendChild(
+    chartBlock(
+      "Final context tokens",
+      barChart(
+        summaries.map((s) => ({
+          label: `${s.task}\n${s.condition}`,
+          value: s.avg_context_tokens_final,
+          ok: true,
+        })),
+        { unit: "tok", decimals: 0 },
+      ),
+    ),
+  );
+}
+
+function chartBlock(title: string, svg: string, banner: string = ""): HTMLElement {
+  const div = document.createElement("div");
+  div.className = "bench-chart";
+  div.innerHTML = `<h4>${title}</h4>${banner}${svg}`;
+  return div;
+}
+
+function barChart(
+  rows: Array<{ label: string; value: number; ok: boolean }>,
+  opts: { unit?: string; decimals?: number; max?: number } = {},
+): string {
+  if (!rows.length) return `<div class="bc-empty">no data</div>`;
+  const W = 320;
+  const H = 180;
+  const padL = 28;
+  const padR = 8;
+  const padT = 10;
+  const padB = 36;
+  const innerW = W - padL - padR;
+  const innerH = H - padT - padB;
+  const dataMax = Math.max(...rows.map((r) => r.value), 0);
+  const max = opts.max ?? (dataMax === 0 ? 1 : dataMax * 1.15);
+  const barW = innerW / rows.length;
+  const dec = opts.decimals ?? 1;
+  const unit = opts.unit ?? "";
+
+  const bars = rows
+    .map((r, i) => {
+      const h = max > 0 ? (r.value / max) * innerH : 0;
+      const x = padL + i * barW + barW * 0.15;
+      const y = padT + innerH - h;
+      const w = barW * 0.7;
+      const cls = r.ok ? "bc-bar" : "bc-bar-fail";
+      const lines = r.label.split("\n");
+      const labelTspans = lines
+        .map(
+          (l, j) =>
+            `<tspan x="${x + w / 2}" dy="${j === 0 ? "1.1em" : "1em"}">${escapeXml(l)}</tspan>`,
+        )
+        .join("");
+      const valStr = `${r.value.toFixed(dec)}${unit}`;
+      return `
+        <rect class="${cls}" x="${x}" y="${y}" width="${w}" height="${Math.max(h, 0)}" rx="2" />
+        <text class="bc-value" x="${x + w / 2}" y="${y - 3}" text-anchor="middle">${valStr}</text>
+        <text class="bc-label" x="${x + w / 2}" y="${padT + innerH + 4}" text-anchor="middle">${labelTspans}</text>
+      `;
+    })
+    .join("");
+
+  const yTick = `${max.toFixed(dec)}${unit}`;
+  return `
+    <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">
+      <line class="bc-axis" x1="${padL}" y1="${padT}" x2="${padL}" y2="${padT + innerH}" />
+      <line class="bc-axis" x1="${padL}" y1="${padT + innerH}" x2="${W - padR}" y2="${padT + innerH}" />
+      <text class="bc-tick" x="${padL - 4}" y="${padT + 3}" text-anchor="end">${yTick}</text>
+      <text class="bc-tick" x="${padL - 4}" y="${padT + innerH + 3}" text-anchor="end">0</text>
+      ${bars}
+    </svg>
+  `;
+}
+
+function escapeXml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 benchRefreshResultsBtn.addEventListener("click", refreshBenchResults);

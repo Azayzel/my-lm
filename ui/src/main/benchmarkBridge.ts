@@ -47,7 +47,13 @@ export class BenchmarkBridge {
       this.proc = spawn(this.python, args, {
         stdio: ["ignore", "pipe", "pipe"],
         // Force unbuffered Python so the renderer sees progress live.
-        env: { ...process.env, PYTHONUNBUFFERED: "1" },
+        env: {
+          ...process.env,
+          PYTHONUNBUFFERED: "1",
+          // Windows default cp1252 can't encode ✓/✗ glyphs printed by the
+          // benchmark script — force UTF-8 IO here too.
+          PYTHONIOENCODING: "utf-8",
+        },
       });
     } catch (e: unknown) {
       return { ok: false, error: (e as Error).message };

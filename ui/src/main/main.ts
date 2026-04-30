@@ -283,7 +283,7 @@ ipcMain.handle("media:list", async (_e, subdir?: string) => {
   const dir = subdir ? path.join(OUTPUTS_DIR, subdir) : OUTPUTS_DIR;
   if (!fs.existsSync(dir)) return { folders: [], files: [] };
 
-  const entries = fs.readdirSync(dir, { withFileTypes: true });
+  const entries = await fs.promises.readdir(dir, { withFileTypes: true });
 
   const folders = entries
     .filter((e) => e.isDirectory())
@@ -298,12 +298,14 @@ ipcMain.handle("media:list", async (_e, subdir?: string) => {
     .filter(
       (e) => e.isFile() && /\.(png|jpg|jpeg|webp)$/i.test(e.name),
     )
-    .map((e) => {
-      const full = path.join(dir, e.name);
-      const stat = fs.statSync(full);
-      return { name: e.name, path: full, size: stat.size, mtime: stat.mtimeMs };
-    })
-    .sort((a, b) => b.mtime - a.mtime);
+    .map((e) => ({
+      name: e.name,
+      path: path.join(dir, e.name),
+      size: 0,
+      mtime: 0,
+    }))
+    // Most generated files include timestamps in the filename, so this is fast and stable.
+    .sort((a, b) => b.name.localeCompare(a.name, undefined, { numeric: true }));
 
   return { folders, files };
 });
