@@ -1255,6 +1255,7 @@ const TYPE_ICONS: Record<string, string> = {
   llm: "🧠",
   image: "🎨",
   upscaler: "🔬",
+  adapter: "🧬",
   unknown: "📦",
 };
 

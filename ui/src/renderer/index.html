@@ -823,9 +823,11 @@
         flex: 1;
         overflow-y: auto;
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+        grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+        grid-auto-rows: auto;
         gap: 12px;
         padding-right: 4px;
+        align-content: start;
       }
       #media-grid::-webkit-scrollbar {
         width: 5px;
@@ -841,6 +843,8 @@
         border-radius: var(--radius);
         overflow: hidden;
         cursor: pointer;
+        display: flex;
+        flex-direction: column;
         transition:
           transform 0.15s,
           border-color 0.15s;
@@ -852,9 +856,11 @@
       }
       .media-card img {
         width: 100%;
-        aspect-ratio: 1;
+        height: clamp(120px, 16vh, 165px);
+        flex: 0 0 auto;
         object-fit: cover;
         display: block;
+        border-bottom: 1px solid var(--border);
       }
       .media-card-info {
         padding: 8px 10px;

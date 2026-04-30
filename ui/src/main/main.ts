@@ -71,6 +71,11 @@ const configStore = new ConfigStore(
   path.join(app.getPath("userData"), "config.json"),
 );
 const THUMB_CACHE_DIR = path.join(app.getPath("userData"), "thumb-cache");
+
+function resolveRepoPath(p?: string): string {
+  if (!p) return "";
+  return path.isAbsolute(p) ? p : path.join(ROOT, p);
+}
 fs.mkdirSync(THUMB_CACHE_DIR, { recursive: true });
 
 // Seed config from .env on first run (so existing users don't lose their setup)
@@ -194,7 +199,7 @@ ipcMain.on("window:close", () => mainWindow?.close());
 // ─── LLM ──────────────────────────────────────────────────────────────────────
 ipcMain.handle("llm:start", async (_e, modelPath: string) => {
   if (llmBridge?.isRunning()) return { ok: true, message: "Already running" };
-  const mPath = modelPath || LLM_MODEL_DIR;
+  const mPath = modelPath ? resolveRepoPath(modelPath) : LLM_MODEL_DIR;
   llmBridge = new LLMBridge(SCRIPTS_DIR, mPath, PYTHON);
   return llmBridge.start((msg) => {
     mainWindow?.webContents.send("llm:event", msg);
@@ -466,8 +471,14 @@ ipcMain.handle("train:start", async (_e, config: TrainConfig) => {
   if (trainBridge?.isRunning()) {
     return { ok: false, error: "Training already running" };
   }
+  const resolvedConfig: TrainConfig = {
+    ...config,
+    model_path: resolveRepoPath(config.model_path),
+    dataset_path: resolveRepoPath(config.dataset_path),
+    output_dir: resolveRepoPath(config.output_dir),
+  };
   trainBridge = new TrainBridge(SCRIPTS_DIR, PYTHON);
-  const result = trainBridge.start(config, (msg) => {
+  const result = trainBridge.start(resolvedConfig, (msg) => {
     mainWindow?.webContents.send("train:event", msg);
   });
   return result;
@@ -488,9 +499,18 @@ ipcMain.handle(
   async (_e, basePath: string, adapterPath: string, outputPath: string) => {
     return new Promise<{ ok: boolean; error?: string }>((resolve) => {
       const script = path.join(SCRIPTS_DIR, "merge_lora.py");
-      const proc = spawn(PYTHON, [script, basePath, adapterPath, outputPath], {
-        stdio: ["ignore", "pipe", "pipe"],
-      });
+      const proc = spawn(
+        PYTHON,
+        [
+          script,
+          resolveRepoPath(basePath),
+          resolveRepoPath(adapterPath),
+          resolveRepoPath(outputPath),
+        ],
+        {
+          stdio: ["ignore", "pipe", "pipe"],
+        },
+      );
       let stderr = "";
       proc.stdout.on("data", (d: Buffer) => {
         mainWindow?.webContents.send("train:event", {
