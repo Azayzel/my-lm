@@ -286,6 +286,7 @@ interface ModelInfo {
   path: string;
   type: string;
   exists: boolean;
+  sizeGb?: number;
 }
 
 interface AppPaths {

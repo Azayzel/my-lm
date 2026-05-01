@@ -8,6 +8,7 @@ export interface ModelInfo {
   path: string;
   type: "llm" | "image" | "upscaler" | "adapter" | "unknown";
   exists: boolean;
+  sizeGb?: number;
 }
 
 export class ModelManager {
@@ -46,6 +47,27 @@ export class ModelManager {
     return "unknown";
   }
 
+  private getDirectorySizeGb(dirPath: string): number {
+    let totalBytes = 0;
+    const traverse = (dir: string) => {
+      try {
+        const entries = fs.readdirSync(dir, { withFileTypes: true });
+        for (const entry of entries) {
+          const fullPath = path.join(dir, entry.name);
+          if (entry.isDirectory()) {
+            traverse(fullPath);
+          } else {
+            totalBytes += fs.statSync(fullPath).size;
+          }
+        }
+      } catch {
+        // Ignore permission errors
+      }
+    };
+    traverse(dirPath);
+    return parseFloat((totalBytes / (1024 * 1024 * 1024)).toFixed(2));
+  }
+
   listModels(): ModelInfo[] {
     if (!fs.existsSync(this.modelsDir)) return [];
 
@@ -62,7 +84,14 @@ export class ModelManager {
         const type = this.detectModelType(fullPath, entry.name);
 
         if (type !== "unknown") {
-          out.push({ name: relName, path: fullPath, type, exists: true });
+          const sizeGb = this.getDirectorySizeGb(fullPath);
+          out.push({
+            name: relName,
+            path: fullPath,
+            type,
+            exists: true,
+            sizeGb,
+          });
           continue;
         }
 

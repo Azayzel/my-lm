@@ -683,6 +683,11 @@
         font-size: 11px;
       }
 
+      .btn-xs {
+        padding: 4px 8px;
+        font-size: 10px;
+      }
+
       /* ─────────────── IMAGE SCREEN ─────────────────────────────────── */
       #screen-image {
         display: none;
@@ -802,6 +807,33 @@
         min-height: 50px;
         white-space: pre-wrap;
         word-break: break-word;
+      }
+
+      /* ─────────────── RIBBON TABS ─────────────────────────────────── */
+      .ribbon-tab {
+        background: transparent;
+        border: none;
+        color: var(--text2);
+        cursor: pointer;
+        transition: all 0.2s;
+        border-bottom: 2px solid transparent;
+        font-size: 12px;
+        font-weight: 500;
+      }
+
+      .ribbon-tab:hover {
+        color: var(--text1);
+        background: rgba(255, 255, 255, 0.03);
+      }
+
+      .ribbon-tab.active {
+        color: var(--text1);
+        border-bottom-color: var(--accent);
+      }
+
+      .ribbon-content {
+        overflow-y: auto;
+        max-height: calc(100% - 120px);
       }
 
       .generate-actions {
@@ -2304,337 +2336,410 @@ You are My-LM, a helpful AI assistant.</textarea
 
           <!-- Image right panel -->
           <div id="image-side-panel">
-            <div class="side-section">
-              <h3>Image Model</h3>
-              <div class="btn btn-primary btn-block" id="img-load-btn">
-                Load Model
+            <!-- Model Control Bar -->
+            <div style="display: flex; gap: 8px; padding: 12px; background: var(--bg1); border-bottom: 1px solid var(--border); align-items: center">
+              <div style="flex: 1">
+                <div style="font-size: 11px; color: var(--text3); margin-bottom: 4px">🎨 Image Model</div>
+                <div class="btn btn-primary btn-sm" id="img-load-btn" style="width: 100%; padding: 6px">
+                  Load Model
+                </div>
               </div>
               <div
-                class="btn btn-danger btn-block btn-sm"
+                class="btn btn-danger btn-sm"
                 id="img-stop-btn"
-                style="display: none"
+                style="display: none; padding: 6px 12px; white-space: nowrap"
               >
                 Stop
               </div>
               <div
-                class="btn btn-ghost btn-block btn-sm"
+                class="btn btn-ghost btn-sm"
                 id="img-unload-btn"
-                style="display: none"
+                style="display: none; padding: 6px 12px; white-space: nowrap"
               >
                 Unload
               </div>
             </div>
 
-            <div class="side-section">
-              <h3 style="display: flex; justify-content: space-between; align-items: center">
-                Prompt Builder
-                <div style="display: flex; gap: 6px; align-items: center">
-                  <button
-                    class="btn btn-ghost btn-sm"
-                    id="describe-prompt-btn"
-                    title="Use the local LLM to describe your prompt"
-                    style="font-size: 11px; padding: 3px 10px"
-                  >
-                    📝 Describe
-                  </button>
-                  <button
-                    class="btn btn-ghost btn-sm"
-                    id="enhance-prompt-btn"
-                    title="Use the local LLM to expand your prompt with rich visual details"
-                    style="font-size: 11px; padding: 3px 10px"
-                  >
-                    ✨ Enhance
-                  </button>
-                </div>
-              </h3>
-              <div style="display: flex; gap: 12px; align-items: center; margin-bottom: 8px; font-size: 11px; color: var(--text2)">
-                <label style="display: flex; align-items: center; gap: 5px; cursor: pointer">
-                  <input
-                    type="radio"
-                    id="describe-mode-full"
-                    name="describe-mode"
-                    value="full"
-                    checked
-                    style="accent-color: var(--accent)"
-                  />
-                  Describe full
-                </label>
-                <label style="display: flex; align-items: center; gap: 5px; cursor: pointer">
-                  <input
-                    type="radio"
-                    id="describe-mode-position"
-                    name="describe-mode"
-                    value="position"
-                    style="accent-color: var(--accent)"
-                  />
-                  Describe position
-                </label>
-                <label style="display: flex; align-items: center; gap: 5px; cursor: pointer">
-                  <input
-                    type="radio"
-                    id="describe-mode-position-append"
-                    name="describe-mode"
-                    value="position-append"
-                    style="accent-color: var(--accent)"
-                  />
-                  Append position
-                </label>
-              </div>
-              <div class="prompt-builder-grid">
-                <div>
-                  <label class="field-label">Head (quality tags)</label>
-                  <input
-                    class="field-input"
-                    id="pb-head"
-                    type="text"
-                    value="masterpiece, best quality, photorealistic, ultra-detailed, 8k raw photo"
-                  />
-                </div>
-                <div>
-                  <label class="field-label">Subject / Name</label>
-                  <input
-                    class="field-input"
-                    id="pb-name"
-                    type="text"
-                    placeholder="e.g. Superman"
-                  />
-                </div>
-                <div>
-                  <label class="field-label">Position / Action</label>
-                  <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px">
-                    <label class="field-label" style="margin: 0; font-size: 11px; color: var(--text2)">
-                      Position Weight
+            <!-- Ribbon Tabs -->
+            <div style="display: flex; gap: 2px; background: var(--bg2); border-bottom: 1px solid var(--border); overflow-x: auto; padding: 0 8px; font-size: 12px">
+              <button class="ribbon-tab active" data-tab="prompt" style="padding: 8px 14px; border-bottom: 2px solid var(--accent)">📝 Prompt</button>
+              <button class="ribbon-tab" data-tab="settings" style="padding: 8px 14px">⚙️ Settings</button>
+              <button class="ribbon-tab" data-tab="advanced" style="padding: 8px 14px">✨ Advanced</button>
+              <button class="ribbon-tab" data-tab="saved" style="padding: 8px 14px">💾 Saved</button>
+            </div>
+
+            <!-- Ribbon Content -->
+            <div style="flex: 1; overflow-y: auto">
+              <!-- Prompt Tab -->
+              <div class="ribbon-content active" data-tab="prompt">
+                <div style="padding: 16px; display: flex; flex-direction: column; gap: 12px">
+                  <!-- Quick Buttons -->
+                  <div style="display: flex; gap: 6px; justify-content: center">
+                    <button
+                      class="btn btn-sm"
+                      id="describe-prompt-btn"
+                      title="Use the local LLM to describe your prompt"
+                      style="flex: 1; background: rgba(100, 200, 255, 0.15); color: var(--accent); border: 1px solid var(--accent)"
+                    >
+                      📝 Describe
+                    </button>
+                    <button
+                      class="btn btn-sm"
+                      id="enhance-prompt-btn"
+                      title="Use the local LLM to expand your prompt with rich visual details"
+                      style="flex: 1; background: rgba(200, 100, 255, 0.15); color: var(--accent); border: 1px solid var(--accent)"
+                    >
+                      ✨ Enhance
+                    </button>
+                  </div>
+
+                  <!-- Mode Radio Buttons -->
+                  <div style="display: flex; gap: 8px; font-size: 11px; color: var(--text2); justify-content: center; flex-wrap: wrap">
+                    <label style="display: flex; align-items: center; gap: 4px; cursor: pointer">
+                      <input
+                        type="radio"
+                        id="describe-mode-full"
+                        name="describe-mode"
+                        value="full"
+                        checked
+                        style="accent-color: var(--accent)"
+                      />
+                      Full
                     </label>
+                    <label style="display: flex; align-items: center; gap: 4px; cursor: pointer">
+                      <input
+                        type="radio"
+                        id="describe-mode-position"
+                        name="describe-mode"
+                        value="position"
+                        style="accent-color: var(--accent)"
+                      />
+                      Position
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 4px; cursor: pointer">
+                      <input
+                        type="radio"
+                        id="describe-mode-position-append"
+                        name="describe-mode"
+                        value="position-append"
+                        style="accent-color: var(--accent)"
+                      />
+                      Append
+                    </label>
+                  </div>
+
+                  <!-- Head -->
+                  <div>
+                    <label class="field-label" style="font-size: 10px; color: var(--text2)">🎯 Quality Tags</label>
                     <input
-                      type="range"
-                      id="pb-position-weight"
-                      min="1"
-                      max="2"
-                      step="0.05"
-                      value="1.55"
-                      style="flex: 1"
+                      class="field-input"
+                      id="pb-head"
+                      type="text"
+                      value="masterpiece, best quality, photorealistic, ultra-detailed, 8k raw photo"
+                      style="font-size: 11px"
                     />
-                    <span class="range-val" id="pb-position-weight-val">1.55</span>
                   </div>
-                  <div style="display: flex; gap: 6px; margin-bottom: 4px">
-                    <select class="field-select" id="pb-position-preset" style="flex: 1; font-size: 11px">
-                      <option value="">— pick a pose preset —</option>
-                    </select>
-                    <button
-                      class="btn btn-ghost btn-sm"
-                      id="pb-position-append"
-                      title="Append the selected pose to the text below"
-                      style="font-size: 11px; padding: 3px 8px; white-space: nowrap"
-                    >+ Add</button>
-                    <button
-                      class="btn btn-ghost btn-sm"
-                      id="pb-position-undo"
-                      title="Undo the last appended position text"
-                      style="font-size: 11px; padding: 3px 8px; white-space: nowrap"
-                      disabled
-                    >↶ Undo</button>
-                  </div>
-                  <textarea
-                    class="field-textarea"
-                    id="pb-position"
-                    rows="2"
-                    placeholder="e.g. taking a mirror selfie while wearing the classic suit, smiling with a smirk"
-                    style="resize: vertical; min-height: 40px"
-                  ></textarea>
-                </div>
-                <div>
-                  <label class="field-label">Weights / Lighting / Style</label>
-                  <textarea
-                    class="field-textarea"
-                    id="pb-weights"
-                    rows="3"
-                    placeholder="Soft natural indoor lighting, realistic skin texture…"
-                  >
-Soft natural indoor lighting, realistic skin texture, flushed cheeks. sharp focus, intricate details, realistic anatomy, high resolution, depth of field</textarea
-                  >
-                </div>
-              </div>
-              <div style="margin-top: 6px">
-                <label class="field-label">Full Prompt Preview</label>
-                <div id="full-prompt-preview"></div>
-              </div>
-              <div style="margin-top: 8px">
-                <label class="field-label">Describe Output</label>
-                <textarea
-                  class="field-textarea"
-                  id="pb-describe-output"
-                  rows="4"
-                  placeholder="Describe/Enhance output will appear here..."
-                  style="resize: vertical; min-height: 72px"
-                ></textarea>
-                <div style="display: flex; gap: 6px; margin-top: 6px">
-                  <button class="btn btn-ghost btn-sm" id="pb-describe-use-position">
-                    Use as Position
-                  </button>
-                  <button class="btn btn-ghost btn-sm" id="pb-describe-use-weights">
-                    Use as Weights
-                  </button>
-                </div>
-              </div>
-            </div>
 
-            <div class="side-section">
-              <h3>Negative Prompt</h3>
-              <textarea class="field-textarea" id="neg-prompt" rows="3">
+                  <!-- Subject -->
+                  <div>
+                    <label class="field-label" style="font-size: 10px; color: var(--text2)">👤 Subject / Name</label>
+                    <input
+                      class="field-input"
+                      id="pb-name"
+                      type="text"
+                      placeholder="e.g. Superman"
+                      style="font-size: 11px"
+                    />
+                  </div>
+
+                  <!-- Position / Action -->
+                  <div>
+                    <label class="field-label" style="font-size: 10px; color: var(--text2)">🧍 Position & Pose</label>
+                    <div style="display: flex; gap: 6px; margin-bottom: 6px; align-items: center">
+                      <input
+                        type="range"
+                        id="pb-position-weight"
+                        min="1"
+                        max="2"
+                        step="0.05"
+                        value="1.55"
+                        style="flex: 1; height: 20px"
+                      />
+                      <span class="range-val" id="pb-position-weight-val" style="min-width: 32px; text-align: center; font-size: 10px">1.55</span>
+                    </div>
+                    <div style="display: flex; gap: 4px; margin-bottom: 6px">
+                      <select class="field-select" id="pb-position-preset" style="flex: 1; font-size: 10px">
+                        <option value="">— pose preset —</option>
+                      </select>
+                      <button
+                        class="btn btn-ghost btn-xs"
+                        id="pb-position-append"
+                        title="Append the selected pose to the text below"
+                        style="font-size: 10px; padding: 4px 8px; white-space: nowrap"
+                      >+</button>
+                      <button
+                        class="btn btn-ghost btn-xs"
+                        id="pb-position-undo"
+                        title="Undo the last appended position text"
+                        style="font-size: 10px; padding: 4px 8px; white-space: nowrap"
+                        disabled
+                      >↶</button>
+                    </div>
+                    <textarea
+                      class="field-textarea"
+                      id="pb-position"
+                      rows="2"
+                      placeholder="e.g. taking a mirror selfie while wearing the classic suit"
+                      style="resize: none; font-size: 11px"
+                    ></textarea>
+                  </div>
+
+                  <!-- Weights / Lighting -->
+                  <div>
+                    <label class="field-label" style="font-size: 10px; color: var(--text2)">💎 Lighting & Style</label>
+                    <textarea
+                      class="field-textarea"
+                      id="pb-weights"
+                      rows="2"
+                      placeholder="Soft natural indoor lighting, realistic skin texture…"
+                      style="resize: none; font-size: 11px"
+                    >Soft natural indoor lighting, realistic skin texture, flushed cheeks. sharp focus, intricate details, realistic anatomy, high resolution, depth of field</textarea
+                    >
+                  </div>
+
+                  <!-- Preview -->
+                  <div style="background: var(--bg1); padding: 8px; border-radius: 4px; border-left: 2px solid var(--accent)">
+                    <div style="font-size: 10px; color: var(--text3); margin-bottom: 4px">📋 Preview</div>
+                    <div id="full-prompt-preview" style="font-size: 11px; color: var(--text1); line-height: 1.4"></div>
+                  </div>
+
+                  <!-- Describe Output -->
+                  <div>
+                    <label class="field-label" style="font-size: 10px; color: var(--text2)">📝 Describe Output</label>
+                    <textarea
+                      class="field-textarea"
+                      id="pb-describe-output"
+                      rows="3"
+                      placeholder="Describe/Enhance output will appear here..."
+                      style="resize: none; font-size: 10px"
+                    ></textarea>
+                    <div style="display: flex; gap: 4px; margin-top: 6px">
+                      <button class="btn btn-ghost btn-xs" id="pb-describe-use-position" style="flex: 1; font-size: 10px">
+                        → Position
+                      </button>
+                      <button class="btn btn-ghost btn-xs" id="pb-describe-use-weights" style="flex: 1; font-size: 10px">
+                        → Weights
+                      </button>
+                    </div>
+                  </div>
+
+                  <!-- Negative Prompt -->
+                  <div>
+                    <label class="field-label" style="font-size: 10px; color: var(--text2)">❌ Negative Prompt</label>
+                    <textarea class="field-textarea" id="neg-prompt" rows="2" style="resize: none; font-size: 11px">
 face asymmetry, eyes asymmetry, deformed eyes, open mouth, cartoon, painting, blurry, low quality</textarea
-              >
+                    >
+                  </div>
+                </div>
+              </div>
+
+              <!-- Settings Tab -->
+              <div class="ribbon-content" data-tab="settings" style="display: none">
+                <div style="padding: 16px; display: flex; flex-direction: column; gap: 12px">
+                  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px">
+                    <!-- Steps -->
+                    <div>
+                      <label class="field-label" style="font-size: 10px">Steps</label>
+                      <div class="range-row" style="display: flex; gap: 8px; align-items: center">
+                        <input
+                          type="range"
+                          id="img-steps"
+                          min="10"
+                          max="60"
+                          step="1"
+                          value="22"
+                          style="flex: 1"
+                        />
+                        <span class="range-val" id="img-steps-val" style="min-width: 28px; font-size: 10px">22</span>
+                      </div>
+                    </div>
+
+                    <!-- CFG -->
+                    <div>
+                      <label class="field-label" style="font-size: 10px">CFG</label>
+                      <div class="range-row" style="display: flex; gap: 8px; align-items: center">
+                        <input
+                          type="range"
+                          id="img-cfg"
+                          min="1"
+                          max="20"
+                          step="0.5"
+                          value="7"
+                          style="flex: 1"
+                        />
+                        <span class="range-val" id="img-cfg-val" style="min-width: 28px; font-size: 10px">7.0</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px">
+                    <!-- Width -->
+                    <div>
+                      <label class="field-label" style="font-size: 10px">Width</label>
+                      <select class="field-select" id="img-width" style="font-size: 11px">
+                        <option value="512">512</option>
+                        <option value="768">768</option>
+                        <option value="1024" selected>1024</option>
+                      </select>
+                    </div>
+
+                    <!-- Height -->
+                    <div>
+                      <label class="field-label" style="font-size: 10px">Height</label>
+                      <select class="field-select" id="img-height" style="font-size: 11px">
+                        <option value="512">512</option>
+                        <option value="768">768</option>
+                        <option value="1024" selected>1024</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <!-- Checkboxes -->
+                  <div style="display: flex; flex-direction: column; gap: 8px">
+                    <label class="field-label" style="display: flex; align-items: center; gap: 6px; cursor: pointer; margin: 0; font-weight: normal">
+                      <input
+                        type="checkbox"
+                        id="img-upscale"
+                        checked
+                        style="accent-color: var(--accent); cursor: pointer"
+                      />
+                      <span style="font-size: 11px">4× Upscale (4x-UltraSharp)</span>
+                    </label>
+                    <label class="field-label" style="display: flex; align-items: center; gap: 6px; cursor: pointer; margin: 0; font-weight: normal">
+                      <input
+                        type="checkbox"
+                        id="img-face-fix"
+                        style="accent-color: var(--accent); cursor: pointer"
+                      />
+                      <span style="font-size: 11px">Face Fix (ADetailer-style)</span>
+                    </label>
+                  </div>
+
+                  <!-- Face Fix Strength -->
+                  <div>
+                    <label class="field-label" style="font-size: 10px">Face Fix Strength</label>
+                    <div class="range-row" style="display: flex; gap: 8px; align-items: center">
+                      <input
+                        type="range"
+                        id="img-face-fix-strength"
+                        min="0.2"
+                        max="0.75"
+                        step="0.05"
+                        value="0.45"
+                        style="flex: 1"
+                      />
+                      <span class="range-val" id="img-face-fix-strength-val" style="min-width: 32px; font-size: 10px">0.45</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Advanced Tab -->
+              <div class="ribbon-content" data-tab="advanced" style="display: none">
+                <div style="padding: 16px; display: flex; flex-direction: column; gap: 12px">
+                  <label class="field-label" style="display: flex; align-items: center; gap: 6px; cursor: pointer; margin: 0">
+                    <input
+                      type="checkbox"
+                      id="img-face-swap"
+                      style="accent-color: var(--accent); cursor: pointer"
+                    />
+                    <span style="font-size: 11px">Face Swap (replace with uploaded face)</span>
+                  </label>
+
+                  <div
+                    id="face-swap-upload"
+                    style="display: flex; gap: 8px; align-items: center; padding: 8px; background: var(--bg1); border-radius: 4px"
+                  >
+                    <button
+                      class="btn btn-ghost btn-sm"
+                      id="face-swap-browse"
+                      style="font-size: 10px; white-space: nowrap"
+                    >
+                      📁 Browse
+                    </button>
+                    <span
+                      id="face-swap-filename"
+                      style="font-size: 10px; color: var(--text3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1"
+                      title=""
+                    >
+                      No file selected
+                    </span>
+                    <img
+                      id="face-swap-preview"
+                      style="width: 28px; height: 28px; border-radius: 50%; object-fit: cover; border: 1px solid var(--border); display: none"
+                    />
+                  </div>
+
+                  <div style="background: var(--bg1); padding: 8px; border-radius: 4px; border-left: 2px solid var(--accent)">
+                    <div style="font-size: 10px; color: var(--text3)">💡 Tip: Advanced options like face swap are experimental and may require a restart if the model changes.</div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Saved Tab -->
+              <div class="ribbon-content" data-tab="saved" style="display: none">
+                <div style="padding: 16px; display: flex; flex-direction: column; gap: 12px">
+                  <div>
+                    <label class="field-label" style="font-size: 10px; margin-bottom: 6px; display: flex; justify-content: space-between">
+                      <span>Saved Prompts</span>
+                      <button
+                        class="btn btn-ghost btn-xs"
+                        id="save-prompt-btn"
+                        style="padding: 2px 8px; font-size: 9px"
+                        title="Save current prompt"
+                      >
+                        + Save
+                      </button>
+                    </label>
+                    <select class="field-select" id="saved-prompts-select" style="font-size: 11px">
+                      <option value="">— select a saved prompt —</option>
+                    </select>
+                  </div>
+
+                  <div style="display: flex; gap: 6px">
+                    <button
+                      class="btn btn-ghost btn-sm"
+                      id="load-prompt-btn"
+                      style="flex: 1; font-size: 11px"
+                    >
+                      Load
+                    </button>
+                    <button
+                      class="btn btn-ghost btn-sm"
+                      id="delete-prompt-btn"
+                      style="flex: 1; font-size: 11px"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
 
-            <div class="side-section">
-              <h3>Settings</h3>
-              <label class="field-label">Steps</label>
-              <div class="range-row">
-                <input
-                  type="range"
-                  id="img-steps"
-                  min="10"
-                  max="60"
-                  step="1"
-                  value="22"
-                />
-                <span class="range-val" id="img-steps-val">22</span>
-              </div>
-              <label class="field-label">Guidance Scale (CFG)</label>
-              <div class="range-row">
-                <input
-                  type="range"
-                  id="img-cfg"
-                  min="1"
-                  max="20"
-                  step="0.5"
-                  value="7"
-                />
-                <span class="range-val" id="img-cfg-val">7.0</span>
-              </div>
-              <label class="field-label">Width</label>
-              <select class="field-select" id="img-width">
-                <option value="512">512</option>
-                <option value="768">768</option>
-                <option value="1024" selected>1024</option>
-              </select>
-              <label class="field-label" style="margin-top: 6px">Height</label>
-              <select class="field-select" id="img-height">
-                <option value="512">512</option>
-                <option value="768">768</option>
-                <option value="1024" selected>1024</option>
-              </select>
-              <label class="field-label" style="margin-top: 6px">
-                <input
-                  type="checkbox"
-                  id="img-upscale"
-                  checked
-                  style="accent-color: var(--accent); margin-right: 4px"
-                />
-                4× Upscale (4x-UltraSharp)
-              </label>
-              <label class="field-label" style="margin-top: 6px">
-                <input
-                  type="checkbox"
-                  id="img-face-fix"
-                  style="accent-color: var(--accent); margin-right: 4px"
-                />
-                Face Fix (ADetailer-style)
-              </label>
-              <label class="field-label" style="margin-top: 4px">
-                Face Fix Strength
-              </label>
-              <div class="range-row">
-                <input
-                  type="range"
-                  id="img-face-fix-strength"
-                  min="0.2"
-                  max="0.75"
-                  step="0.05"
-                  value="0.45"
-                />
-                <span class="range-val" id="img-face-fix-strength-val"
-                  >0.45</span
-                >
-              </div>
-              <label class="field-label" style="margin-top: 6px">
-                <input
-                  type="checkbox"
-                  id="img-face-swap"
-                  style="accent-color: var(--accent); margin-right: 4px"
-                />
-                Face Swap (replace with uploaded face)
-              </label>
-              <div
-                id="face-swap-upload"
-                style="margin-top: 4px; display: flex; gap: 6px; align-items: center"
-              >
-                <button
-                  class="btn btn-ghost btn-sm"
-                  id="face-swap-browse"
-                  style="font-size: 11px"
-                >
-                  Choose face...
-                </button>
-                <span
-                  id="face-swap-filename"
-                  style="font-size: 10px; color: var(--text3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 140px"
-                  title=""
-                >
-                  No file selected
-                </span>
-                <img
-                  id="face-swap-preview"
-                  style="width: 32px; height: 32px; border-radius: 50%; object-fit: cover; border: 1px solid var(--border); display: none"
-                />
-              </div>
-            </div>
-
-            <div class="side-section">
-              <h3>
-                Saved Prompts
-                <button
-                  class="btn btn-ghost btn-sm"
-                  id="save-prompt-btn"
-                  style="float: right; padding: 2px 8px; font-size: 11px"
-                  title="Save current prompt"
-                >
-                  + Save
-                </button>
-              </h3>
-              <select class="field-select" id="saved-prompts-select">
-                <option value="">— select a saved prompt —</option>
-              </select>
-              <div style="display: flex; gap: 6px; margin-top: 6px">
-                <button
-                  class="btn btn-ghost btn-sm"
-                  id="load-prompt-btn"
-                  style="flex: 1"
-                >
-                  Load
-                </button>
-                <button
-                  class="btn btn-ghost btn-sm"
-                  id="delete-prompt-btn"
-                  style="flex: 1"
-                >
-                  Delete
-                </button>
-              </div>
-            </div>
-
-            <div class="generate-actions">
+            <!-- Generate Button Bar (fixed bottom) -->
+            <div class="generate-actions" style="padding: 12px; background: var(--bg1); border-top: 1px solid var(--border); display: flex; gap: 8px; position: sticky; bottom: 0">
               <button
                 class="btn btn-primary"
                 id="generate-btn"
                 style="flex: 1"
                 disabled
               >
-                Generate
+                🚀 Generate
               </button>
               <button
                 class="btn btn-danger"
                 id="generate-stop-btn"
-                style="display: none"
+                style="display: none; padding: 0 16px"
               >
                 Stop
               </button>
@@ -3153,7 +3258,54 @@ face asymmetry, eyes asymmetry, deformed eyes, open mouth, cartoon, painting, bl
               🩺 Run Diagnostics
             </button>
           </div>
-          <div id="models-list"></div>
+
+          <!-- ── Quick Model Selector ── -->
+          <div style="margin-bottom: 24px; padding: 16px; background: var(--bg2); border-radius: 8px; border: 1px solid var(--border)">
+            <h3 style="margin: 0 0 16px 0; font-size: 14px; font-weight: 600">⚡ Quick Model Selector</h3>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px">
+              <!-- LLM Model Selector -->
+              <div>
+                <label style="display: block; font-size: 12px; font-weight: 600; color: var(--text2); margin-bottom: 8px">
+                  🧠 Chat Model (LLM)
+                </label>
+                <select class="field-select" id="model-selector-llm" style="width: 100%; margin-bottom: 8px">
+                  <option value="">-- Loading models --</option>
+                </select>
+                <div style="font-size: 11px; color: var(--text3); margin-bottom: 8px" id="model-info-llm">
+                  Current: qwen3.5-2b
+                </div>
+                <button class="btn btn-sm btn-primary" id="model-set-llm-btn" style="width: 100%">
+                  Set as Active
+                </button>
+              </div>
+              <!-- Image Model Selector -->
+              <div>
+                <label style="display: block; font-size: 12px; font-weight: 600; color: var(--text2); margin-bottom: 8px">
+                  🎨 Image Model
+                </label>
+                <select class="field-select" id="model-selector-image" style="width: 100%; margin-bottom: 8px">
+                  <option value="">-- Loading models --</option>
+                </select>
+                <div style="font-size: 11px; color: var(--text3); margin-bottom: 8px" id="model-info-image">
+                  Current: realvisxl-v4
+                </div>
+                <button class="btn btn-sm btn-primary" id="model-set-image-btn" style="width: 100%">
+                  Set as Active
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- ── Model Explorer ── -->
+          <div style="margin: 24px 0">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px">
+              <h3 style="margin: 0; font-size: 14px; font-weight: 600; color: var(--text1)">📂 Available Models</h3>
+              <button class="btn btn-ghost btn-sm" id="models-refresh-btn">
+                ⟳ Refresh
+              </button>
+            </div>
+            <div id="models-list" style="background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden"></div>
+          </div>
 
           <div style="margin-top: 24px" class="catalog-section">
             <div class="catalog-header">

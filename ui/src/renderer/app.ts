@@ -26,6 +26,9 @@ const state = {
   // conversation history for current session
   messages: [] as { role: string; content: string }[],
   paths: null as AppPaths | null,
+  // model selection
+  selectedLlmModel: "", // path to selected LLM model
+  selectedImageModel: "", // path to selected Image model
 };
 
 // ─── DOM helpers ──────────────────────────────────────────────────────────────
@@ -257,6 +260,10 @@ let visionLastError = "";
 type VisionUiState = "idle" | "ready" | "busy" | "error";
 
 function updateVisionTooltip(statusText: string) {
+  if (statusText.startsWith("Vision: basic mode")) {
+    chatVisionStatus.title = statusText;
+    return;
+  }
   const parts: string[] = [statusText];
   if (visionLastModel) parts.push(`Model: ${visionLastModel}`);
   if (visionLastCaptionChars > 0) {
@@ -386,7 +393,9 @@ llmLoadBtn.addEventListener("click", async () => {
   if (state.llmLoading) return;
   state.llmLoading = true;
   updateLLMUI();
-  const res = await window.My.llm.start();
+  // Use selected model if available, otherwise let backend use default
+  const modelPath = state.selectedLlmModel || undefined;
+  const res = await window.My.llm.start(modelPath);
   if (!res.ok) {
     state.llmLoading = false;
     updateLLMUI();
@@ -439,9 +448,6 @@ async function sendChat() {
       visionLastModel = vision.model || "caption model";
       visionLastError = "";
       const usingFallback = visionLastModel === "basic-vision-fallback";
-      if (usingFallback) {
-        visionLastError = "Fallback mode active: basic visual analysis";
-      }
       userText = `${text || "Please analyze the attached image."}\n\n[Attached image: ${fileName}]\n[Image description]\n${caption}`;
       const describeOut = document.querySelector<HTMLTextAreaElement>(
         "#pb-describe-output",
@@ -1291,7 +1297,9 @@ imgLoadBtn.addEventListener("click", async () => {
   if (state.imageLoading) return;
   state.imageLoading = true;
   updateImageUI();
-  const res = await window.My.image.start();
+  // Use selected model if available, otherwise let backend use default
+  const modelPath = state.selectedImageModel || undefined;
+  const res = await window.My.image.start(modelPath);
   if (!res.ok) {
     state.imageLoading = false;
     updateImageUI();
@@ -1330,6 +1338,37 @@ generateStopBtn.addEventListener("click", async () => {
   progressFill.style.width = "0%";
   updateImageUI();
   showToast("Generation stopped", "info");
+});
+
+// ─── Ribbon Tab Switching ─────────────────────────────────────────────────
+document.querySelectorAll<HTMLElement>(".ribbon-tab").forEach((tab) => {
+  tab.addEventListener("click", () => {
+    const tabName = tab.dataset.tab;
+    if (!tabName) return;
+
+    // Hide all content
+    document
+      .querySelectorAll<HTMLElement>(".ribbon-content")
+      .forEach((c) => (c.style.display = "none"));
+
+    // Deactivate all tabs
+    document
+      .querySelectorAll<HTMLElement>(".ribbon-tab")
+      .forEach((t) => {
+        t.style.borderBottomColor = "transparent";
+        t.style.color = "var(--text2)";
+      });
+
+    // Show selected content
+    const content = document.querySelector<HTMLElement>(
+      `.ribbon-content[data-tab="${tabName}"]`,
+    );
+    if (content) content.style.display = "block";
+
+    // Activate selected tab
+    tab.style.borderBottomColor = "var(--accent)";
+    tab.style.color = "var(--text1)";
+  });
 });
 
 generateBtn.addEventListener("click", async () => {
@@ -1659,29 +1698,145 @@ async function loadModelsList() {
   const list = $("#models-list");
   list.innerHTML = "";
   const models = await window.My.models.list();
+
   if (!models.length) {
     list.innerHTML =
-      '<div style="color:var(--text3);font-size:13px;">No models found in models/ directory.</div>';
+      '<div style="color:var(--text3);font-size:13px;padding:24px;text-align:center;"><div style="font-size:24px;margin-bottom:8px">📭</div><div>No models found in models/ directory.</div></div>';
     return;
   }
+
+  // Group models by type
+  const grouped: Record<string, typeof models> = {};
   models.forEach((m) => {
-    const card = document.createElement("div");
-    card.className = "model-card";
-    card.innerHTML = `
-      <div class="model-card-icon">${TYPE_ICONS[m.type] ?? "📦"}</div>
-      <div class="model-card-info">
-        <div class="mc-name">${m.name}</div>
-        <div class="mc-path">${m.path}</div>
-        <span class="mc-type">${m.type}</span>
+    if (!grouped[m.type]) grouped[m.type] = [];
+    grouped[m.type].push(m);
+  });
+
+  const typeOrder = ["llm", "image", "upscaler", "adapter", "unknown"];
+  const sortedTypes = Object.keys(grouped).sort(
+    (a, b) => typeOrder.indexOf(a) - typeOrder.indexOf(b),
+  );
+
+  // Build explorer view
+  let html = "";
+  sortedTypes.forEach((type, typeIdx) => {
+    const icon = TYPE_ICONS[type] ?? "📦";
+    const typeLabel = type.charAt(0).toUpperCase() + type.slice(1);
+    const isOpen = typeIdx === 0; // First group open
+
+    html += `
+    <div style="border-bottom: 1px solid var(--border)">
+      <div class="model-group-header" data-type="${type}" style="display:flex;align-items:center;gap:8px;padding:12px 16px;background:var(--bg1);cursor:pointer;user-select:none;transition:background 0.2s">
+        <span class="group-toggle" style="display:inline-block;width:20px;text-align:center;transform:${isOpen ? "rotate(0)" : "rotate(-90)"}deg;transition:transform 0.2s">▼</span>
+        <span style="font-size:16px">${icon}</span>
+        <span style="font-weight:600;font-size:13px;color:var(--text1);flex:1">${typeLabel}</span>
+        <span style="font-size:11px;color:var(--text3);background:var(--bg2);padding:2px 6px;border-radius:3px">${grouped[type].length}</span>
       </div>
+      <div class="model-group-content" style="display:${isOpen ? "block" : "none"}">
+        ${grouped[type]
+          .map(
+            (m, idx) => `
+          <div style="padding:12px 16px;border-bottom:${idx < grouped[type].length - 1 ? "1px solid var(--border)" : "none"};display:flex;align-items:center;gap:12px;background:var(--bg2);transition:background 0.2s;hover:background var(--bg1)" onmouseover="this.style.background='var(--bg1)'" onmouseout="this.style.background='var(--bg2)'">
+            <span style="font-size:14px">${icon}</span>
+            <div style="flex:1;min-width:0">
+              <div style="font-weight:500;font-size:12px;color:var(--text1);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${m.name}</div>
+              <div style="font-size:10px;color:var(--text3);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:monospace">${m.path}</div>
+              <div style="font-size:9px;color:var(--text3);margin-top:4px">${(m.sizeGb || 0).toFixed(1)} GB</div>
+            </div>
+            <button class="btn btn-sm btn-ghost model-quick-select" data-type="${type}" data-path="${m.path}" style="white-space:nowrap">
+              Select
+            </button>
+          </div>
+        `,
+          )
+          .join("")}
+      </div>
+    </div>
     `;
-    list.appendChild(card);
+  });
+
+  list.innerHTML = html;
+
+  // Attach group toggle listeners
+  list
+    .querySelectorAll<HTMLElement>(".model-group-header")
+    .forEach((header) => {
+      header.addEventListener("click", () => {
+        const content = header.nextElementSibling as HTMLElement;
+        const toggle = header.querySelector<HTMLElement>(".group-toggle")!;
+        const isOpen = content.style.display !== "none";
+        content.style.display = isOpen ? "none" : "block";
+        toggle.style.transform = isOpen ? "rotate(-90deg)" : "rotate(0)";
+      });
+    });
+
+  // Attach quick-select listeners
+  list
+    .querySelectorAll<HTMLButtonElement>(".model-quick-select")
+    .forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const type = btn.dataset.type!;
+        const path = btn.dataset.path!;
+        if (type === "llm") {
+          const select = $<HTMLSelectElement>("#model-selector-llm");
+          select.value = path;
+          ($("#model-set-llm-btn") as HTMLElement).click();
+        } else if (type === "image") {
+          const select = $<HTMLSelectElement>("#model-selector-image");
+          select.value = path;
+          ($("#model-set-image-btn") as HTMLElement).click();
+        }
+      });
+    });
+
+  // Also update model selectors
+  await updateModelSelectors();
+}
+
+async function updateModelSelectors() {
+  const models = await window.My.models.list();
+  const llmSelect = $<HTMLSelectElement>("#model-selector-llm");
+  const imageSelect = $<HTMLSelectElement>("#model-selector-image");
+
+  // Group by type
+  const llmModels = models.filter((m) => m.type === "llm");
+  const imageModels = models.filter((m) => m.type === "image");
+
+  // Populate LLM selector
+  llmSelect.innerHTML = '<option value="">-- Select an LLM model --</option>';
+  llmModels.forEach((m) => {
+    const opt = document.createElement("option");
+    opt.value = m.path;
+    opt.textContent = `${m.name} (${(m.sizeGb || 0).toFixed(1)}GB)`;
+    llmSelect.appendChild(opt);
+  });
+
+  // Populate Image selector
+  imageSelect.innerHTML =
+    '<option value="">-- Select an image model --</option>';
+  imageModels.forEach((m) => {
+    const opt = document.createElement("option");
+    opt.value = m.path;
+    opt.textContent = `${m.name} (${(m.sizeGb || 0).toFixed(1)}GB)`;
+    imageSelect.appendChild(opt);
   });
 }
 
 // Download
 const dlLog = $<HTMLDivElement>("#download-log");
 const diagnosticsLog = $<HTMLDivElement>("#diagnostics-log");
+
+// Models refresh button
+$("#models-refresh-btn").addEventListener("click", async () => {
+  const btn = $("#models-refresh-btn") as HTMLButtonElement;
+  const originalText = btn.textContent;
+  btn.textContent = "⟳ Loading…";
+  btn.disabled = true;
+  await loadModelsList();
+  btn.textContent = originalText;
+  btn.disabled = false;
+  showToast("Models refreshed ✓", "success");
+});
 
 function logDownload(text: string) {
   dlLog.style.display = "block";
@@ -1896,6 +2051,36 @@ $("#run-diagnostics-btn").addEventListener("click", async () => {
     );
   }
   showToast("Diagnostics complete ✓", "success");
+});
+
+// ─── Model Selector Buttons ────────────────────────────────────────────────────
+
+$("#model-set-llm-btn").addEventListener("click", async () => {
+  const select = $<HTMLSelectElement>("#model-selector-llm");
+  const modelPath = select.value;
+  if (!modelPath) {
+    showToast("Please select a model first", "error");
+    return;
+  }
+  state.selectedLlmModel = modelPath;
+  const infoEl = $<HTMLElement>("#model-info-llm");
+  const modelName = select.options[select.selectedIndex]?.text || modelPath;
+  infoEl.textContent = `Current: ${modelName}`;
+  showToast(`LLM model set to: ${modelName}`, "success");
+});
+
+$("#model-set-image-btn").addEventListener("click", async () => {
+  const select = $<HTMLSelectElement>("#model-selector-image");
+  const modelPath = select.value;
+  if (!modelPath) {
+    showToast("Please select a model first", "error");
+    return;
+  }
+  state.selectedImageModel = modelPath;
+  const infoEl = $<HTMLElement>("#model-info-image");
+  const modelName = select.options[select.selectedIndex]?.text || modelPath;
+  infoEl.textContent = `Current: ${modelName}`;
+  showToast(`Image model set to: ${modelName}`, "success");
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
