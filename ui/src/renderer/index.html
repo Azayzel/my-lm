@@ -478,6 +478,93 @@
       #chat-send-btn:hover:not(:disabled) {
         opacity: 0.85;
       }
+      #chat-attach-btn {
+        width: 36px;
+        height: 36px;
+        border-radius: 10px;
+        background: var(--bg3);
+        border: 1px solid var(--border);
+        color: var(--text2);
+        font-size: 16px;
+        cursor: pointer;
+        transition: all 0.2s;
+        flex-shrink: 0;
+      }
+      #chat-attach-btn:hover {
+        border-color: var(--accent);
+        color: var(--text);
+      }
+      .chat-vision-status {
+        margin-top: 8px;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 8px;
+        border-radius: 999px;
+        font-size: 11px;
+        border: 1px solid var(--border);
+        background: var(--bg2);
+        color: var(--text2);
+      }
+      .chat-vision-status .dot {
+        width: 6px;
+        height: 6px;
+      }
+      .chat-vision-status.ready {
+        border-color: rgba(74, 222, 128, 0.45);
+        color: var(--success);
+      }
+      .chat-vision-status.busy {
+        border-color: rgba(250, 204, 21, 0.45);
+        color: var(--warn);
+      }
+      .chat-vision-status.error {
+        border-color: rgba(248, 113, 113, 0.45);
+        color: var(--danger);
+      }
+      #chat-attach-preview {
+        margin-top: 8px;
+        display: none;
+        align-items: center;
+        gap: 8px;
+        background: var(--bg2);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 6px 8px;
+      }
+      #chat-attach-preview.visible {
+        display: flex;
+      }
+      #chat-attach-preview img {
+        width: 28px;
+        height: 28px;
+        border-radius: 6px;
+        object-fit: cover;
+        border: 1px solid var(--border);
+      }
+      #chat-attach-name {
+        flex: 1;
+        min-width: 0;
+        font-size: 11px;
+        color: var(--text2);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      #chat-attach-clear {
+        width: 22px;
+        height: 22px;
+        border-radius: 6px;
+        border: 1px solid var(--border);
+        background: var(--bg3);
+        color: var(--text2);
+        cursor: pointer;
+        font-size: 12px;
+      }
+      #chat-attach-clear:hover {
+        color: var(--danger);
+        border-color: var(--danger);
+      }
 
       /* chat right panel */
       #chat-side-panel {
@@ -2092,7 +2179,17 @@
                   placeholder="Message My-LM…"
                   maxlength="4096"
                 ></textarea>
+                <button id="chat-attach-btn" title="Attach image">📎</button>
                 <button id="chat-send-btn" title="Send">↑</button>
+              </div>
+              <div id="chat-vision-status" class="chat-vision-status" title="Image description backend status">
+                <span class="dot" id="chat-vision-dot"></span>
+                <span id="chat-vision-text">Vision: idle</span>
+              </div>
+              <div id="chat-attach-preview">
+                <img id="chat-attach-thumb" alt="Attachment preview" />
+                <span id="chat-attach-name"></span>
+                <button id="chat-attach-clear" title="Remove attachment">✕</button>
               </div>
             </div>
           </div>
@@ -2231,15 +2328,58 @@ You are My-LM, a helpful AI assistant.</textarea
             <div class="side-section">
               <h3 style="display: flex; justify-content: space-between; align-items: center">
                 Prompt Builder
-                <button
-                  class="btn btn-ghost btn-sm"
-                  id="enhance-prompt-btn"
-                  title="Use the local LLM to expand your prompt with rich visual details"
-                  style="font-size: 11px; padding: 3px 10px"
-                >
-                  ✨ Enhance
-                </button>
+                <div style="display: flex; gap: 6px; align-items: center">
+                  <button
+                    class="btn btn-ghost btn-sm"
+                    id="describe-prompt-btn"
+                    title="Use the local LLM to describe your prompt"
+                    style="font-size: 11px; padding: 3px 10px"
+                  >
+                    📝 Describe
+                  </button>
+                  <button
+                    class="btn btn-ghost btn-sm"
+                    id="enhance-prompt-btn"
+                    title="Use the local LLM to expand your prompt with rich visual details"
+                    style="font-size: 11px; padding: 3px 10px"
+                  >
+                    ✨ Enhance
+                  </button>
+                </div>
               </h3>
+              <div style="display: flex; gap: 12px; align-items: center; margin-bottom: 8px; font-size: 11px; color: var(--text2)">
+                <label style="display: flex; align-items: center; gap: 5px; cursor: pointer">
+                  <input
+                    type="radio"
+                    id="describe-mode-full"
+                    name="describe-mode"
+                    value="full"
+                    checked
+                    style="accent-color: var(--accent)"
+                  />
+                  Describe full
+                </label>
+                <label style="display: flex; align-items: center; gap: 5px; cursor: pointer">
+                  <input
+                    type="radio"
+                    id="describe-mode-position"
+                    name="describe-mode"
+                    value="position"
+                    style="accent-color: var(--accent)"
+                  />
+                  Describe position
+                </label>
+                <label style="display: flex; align-items: center; gap: 5px; cursor: pointer">
+                  <input
+                    type="radio"
+                    id="describe-mode-position-append"
+                    name="describe-mode"
+                    value="position-append"
+                    style="accent-color: var(--accent)"
+                  />
+                  Append position
+                </label>
+              </div>
               <div class="prompt-builder-grid">
                 <div>
                   <label class="field-label">Head (quality tags)</label>
@@ -2261,6 +2401,21 @@ You are My-LM, a helpful AI assistant.</textarea
                 </div>
                 <div>
                   <label class="field-label">Position / Action</label>
+                  <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px">
+                    <label class="field-label" style="margin: 0; font-size: 11px; color: var(--text2)">
+                      Position Weight
+                    </label>
+                    <input
+                      type="range"
+                      id="pb-position-weight"
+                      min="1"
+                      max="2"
+                      step="0.05"
+                      value="1.55"
+                      style="flex: 1"
+                    />
+                    <span class="range-val" id="pb-position-weight-val">1.55</span>
+                  </div>
                   <div style="display: flex; gap: 6px; margin-bottom: 4px">
                     <select class="field-select" id="pb-position-preset" style="flex: 1; font-size: 11px">
                       <option value="">— pick a pose preset —</option>
@@ -2271,6 +2426,13 @@ You are My-LM, a helpful AI assistant.</textarea
                       title="Append the selected pose to the text below"
                       style="font-size: 11px; padding: 3px 8px; white-space: nowrap"
                     >+ Add</button>
+                    <button
+                      class="btn btn-ghost btn-sm"
+                      id="pb-position-undo"
+                      title="Undo the last appended position text"
+                      style="font-size: 11px; padding: 3px 8px; white-space: nowrap"
+                      disabled
+                    >↶ Undo</button>
                   </div>
                   <textarea
                     class="field-textarea"
@@ -2295,6 +2457,24 @@ Soft natural indoor lighting, realistic skin texture, flushed cheeks. sharp focu
               <div style="margin-top: 6px">
                 <label class="field-label">Full Prompt Preview</label>
                 <div id="full-prompt-preview"></div>
+              </div>
+              <div style="margin-top: 8px">
+                <label class="field-label">Describe Output</label>
+                <textarea
+                  class="field-textarea"
+                  id="pb-describe-output"
+                  rows="4"
+                  placeholder="Describe/Enhance output will appear here..."
+                  style="resize: vertical; min-height: 72px"
+                ></textarea>
+                <div style="display: flex; gap: 6px; margin-top: 6px">
+                  <button class="btn btn-ghost btn-sm" id="pb-describe-use-position">
+                    Use as Position
+                  </button>
+                  <button class="btn btn-ghost btn-sm" id="pb-describe-use-weights">
+                    Use as Weights
+                  </button>
+                </div>
               </div>
             </div>
 

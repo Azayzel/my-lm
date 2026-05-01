@@ -22,6 +22,12 @@ contextBridge.exposeInMainWorld("My", {
     },
   },
 
+  // Vision helpers
+  vision: {
+    describeImage: (imagePath: string, hint?: string) =>
+      ipcRenderer.invoke("vision:describeImage", imagePath, hint),
+  },
+
   // Image generation
   image: {
     start: (modelPath?: string) => ipcRenderer.invoke("image:start", modelPath),

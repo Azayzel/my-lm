@@ -225,6 +225,56 @@ ipcMain.handle("llm:status", async () => ({
   ready: llmBridge?.isReady() ?? false,
 }));
 
+// ─── Vision (one-shot image description) ───────────────────────────────────
+ipcMain.handle(
+  "vision:describeImage",
+  async (_e, imagePath: string, hint?: string) => {
+    const resolvedImage = path.resolve(imagePath);
+    if (!fs.existsSync(resolvedImage)) {
+      return { ok: false, error: `Image not found: ${resolvedImage}` };
+    }
+
+    const script = path.join(SCRIPTS_DIR, "image_describe.py");
+    const args = [script, resolvedImage];
+    if (hint && hint.trim()) args.push(hint.trim());
+
+    const result = await runCommand(PYTHON, args);
+    const lines = result.stdout
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter(Boolean);
+
+    // Parse the last JSON-ish line if present.
+    let parsed: any = null;
+    for (let i = lines.length - 1; i >= 0; i -= 1) {
+      const line = lines[i];
+      if (!line.startsWith("{")) continue;
+      try {
+        parsed = JSON.parse(line);
+        break;
+      } catch {
+        // keep searching
+      }
+    }
+
+    if (parsed && parsed.ok && parsed.caption) {
+      return {
+        ok: true,
+        caption: String(parsed.caption),
+        model: String(parsed.model || ""),
+        warning: parsed.warning ? String(parsed.warning) : undefined,
+      };
+    }
+
+    const error =
+      (parsed && parsed.error ? String(parsed.error) : "") ||
+      result.stderr.trim() ||
+      `image_describe exited with code ${result.code}`;
+
+    return { ok: false, error };
+  },
+);
+
 // ─── Image Generation ─────────────────────────────────────────────────────────
 ipcMain.handle("image:start", async (_e, modelPath?: string) => {
   if (imageBridge?.isRunning()) return { ok: true, message: "Already running" };
@@ -632,7 +682,7 @@ ipcMain.handle(
 );
 
 ipcMain.handle("models:exists", async (_e, modelPath: string) =>
-  fs.existsSync(modelPath),
+  fs.existsSync(resolveRepoPath(modelPath)),
 );
 
 // ─── Model catalog (curated, filterable by VRAM) ─────────────────────────

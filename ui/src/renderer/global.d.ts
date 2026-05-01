@@ -15,6 +15,18 @@ interface MyAPI {
     status(): Promise<{ running: boolean; ready: boolean }>;
     onEvent(cb: (msg: BridgeMsg) => void): () => void;
   };
+  vision: {
+    describeImage(
+      imagePath: string,
+      hint?: string,
+    ): Promise<{
+      ok: boolean;
+      caption?: string;
+      model?: string;
+      warning?: string;
+      error?: string;
+    }>;
+  };
   image: {
     start(
       modelPath?: string,

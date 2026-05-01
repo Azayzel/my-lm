@@ -203,6 +203,14 @@ window.My.onPaths((paths) => {
 const messagesEl = $("#messages");
 const chatInput = $<HTMLTextAreaElement>("#chat-input");
 const chatSendBtn = $<HTMLButtonElement>("#chat-send-btn");
+const chatAttachBtn = $<HTMLButtonElement>("#chat-attach-btn");
+const chatAttachPreview = $<HTMLDivElement>("#chat-attach-preview");
+const chatAttachThumb = $<HTMLImageElement>("#chat-attach-thumb");
+const chatAttachName = $<HTMLElement>("#chat-attach-name");
+const chatAttachClearBtn = $<HTMLButtonElement>("#chat-attach-clear");
+const chatVisionStatus = $<HTMLDivElement>("#chat-vision-status");
+const chatVisionDot = $<HTMLSpanElement>("#chat-vision-dot");
+const chatVisionText = $<HTMLSpanElement>("#chat-vision-text");
 const llmLoadBtn = $("#llm-load-btn");
 const llmStopBtn = $("#llm-stop-btn");
 const llmUnloadBtn = $("#llm-unload-btn");
@@ -241,6 +249,66 @@ updateLLMUI();
 // Subscribe to LLM events
 let currentAssistantBubble: HTMLElement | null = null;
 let currentAssistantText = "";
+let chatAttachmentPath = "";
+let visionLastCaptionChars = 0;
+let visionLastModel = "";
+let visionLastError = "";
+
+type VisionUiState = "idle" | "ready" | "busy" | "error";
+
+function updateVisionTooltip(statusText: string) {
+  const parts: string[] = [statusText];
+  if (visionLastModel) parts.push(`Model: ${visionLastModel}`);
+  if (visionLastCaptionChars > 0) {
+    parts.push(`Last caption length: ${visionLastCaptionChars} chars`);
+  }
+  if (visionLastError) parts.push(`Last error: ${visionLastError}`);
+  chatVisionStatus.title = parts.join("\n");
+}
+
+function setVisionStatus(state: VisionUiState, message?: string) {
+  chatVisionStatus.classList.remove("ready", "busy", "error");
+  if (state !== "idle") chatVisionStatus.classList.add(state);
+
+  if (state === "ready") {
+    chatVisionDot.className = "dot on";
+  } else if (state === "busy") {
+    chatVisionDot.className = "dot loading";
+  } else if (state === "error") {
+    chatVisionDot.className = "dot";
+    (chatVisionDot as HTMLElement).style.background = "var(--danger)";
+  } else {
+    chatVisionDot.className = "dot";
+    (chatVisionDot as HTMLElement).style.background = "";
+  }
+
+  const statusText = message || "Vision: idle";
+  chatVisionText.textContent = statusText;
+  updateVisionTooltip(statusText);
+}
+
+setVisionStatus("idle", "Vision: idle");
+
+function basenameFromPath(p: string): string {
+  return p.replace(/\\/g, "/").split("/").pop() || p;
+}
+
+function setChatAttachment(path: string | null, preserveVisionStatus = false) {
+  if (!path) {
+    chatAttachmentPath = "";
+    chatAttachPreview.classList.remove("visible");
+    chatAttachThumb.src = "";
+    chatAttachName.textContent = "";
+    if (!preserveVisionStatus) setVisionStatus("idle", "Vision: idle");
+    return;
+  }
+  chatAttachmentPath = path;
+  chatAttachThumb.src = `file://${path}`;
+  chatAttachName.textContent = basenameFromPath(path);
+  chatAttachName.title = path;
+  chatAttachPreview.classList.add("visible");
+  setVisionStatus("idle", "Vision: image attached");
+}
 
 window.My.llm.onEvent((msg: BridgeMsg) => {
   if (msg.type === "status") {
@@ -251,6 +319,8 @@ window.My.llm.onEvent((msg: BridgeMsg) => {
     updateLLMUI();
     showToast("LLM model ready ✓", "success");
   } else if (msg.type === "token") {
+    // Ignore token streams from non-chat tools (Describe/Enhance/Books).
+    if (!state.streaming && !currentAssistantBubble) return;
     if (!currentAssistantBubble) {
       currentAssistantText = "";
       const msgEl = appendMessage("assistant", "");
@@ -262,6 +332,8 @@ window.My.llm.onEvent((msg: BridgeMsg) => {
     currentAssistantBubble.textContent = currentAssistantText;
     messagesEl.scrollTop = messagesEl.scrollHeight;
   } else if (msg.type === "done") {
+    // Ignore done events from non-chat tool requests.
+    if (!state.streaming && !currentAssistantBubble) return;
     if (currentAssistantBubble) {
       currentAssistantBubble.classList.remove("typing-cursor");
       // Render final response as markdown
@@ -346,16 +418,61 @@ llmUnloadBtn.addEventListener("click", async () => {
 
 async function sendChat() {
   const text = chatInput.value.trim();
-  if (!text || !state.llmReady || state.streaming) return;
+  if ((!text && !chatAttachmentPath) || !state.llmReady || state.streaming)
+    return;
 
   chatInput.value = "";
   chatInput.style.height = "";
 
-  appendMessage("user", text);
-  state.messages.push({ role: "user", content: text });
+  let userText = text;
+  if (chatAttachmentPath) {
+    const fileName = basenameFromPath(chatAttachmentPath);
+    setVisionStatus("busy", "Vision: analyzing image...");
+    showToast("Analyzing attached image…", "info");
+    const vision = await window.My.vision.describeImage(
+      chatAttachmentPath,
+      text || undefined,
+    );
+    if (vision.ok && vision.caption) {
+      const caption = vision.caption.trim();
+      visionLastCaptionChars = caption.length;
+      visionLastModel = vision.model || "caption model";
+      visionLastError = "";
+      const usingFallback =
+        !!vision.warning || visionLastModel === "basic-vision-fallback";
+      if (usingFallback) {
+        visionLastError = "Fallback mode active: basic visual analysis";
+      }
+      userText = `${text || "Please analyze the attached image."}\n\n[Attached image: ${fileName}]\n[Image description]\n${caption}`;
+      const describeOut = document.querySelector<HTMLTextAreaElement>(
+        "#pb-describe-output",
+      );
+      if (describeOut) describeOut.value = caption;
+      setVisionStatus(
+        "ready",
+        usingFallback
+          ? `Vision: basic mode (${visionLastCaptionChars} chars)`
+          : `Vision: ready (${visionLastModel}, ${visionLastCaptionChars} chars)`,
+      );
+    } else {
+      visionLastError = vision.error || "unknown error";
+      userText = `${text || "Please analyze the attached image."}\n\n[Attached image: ${fileName}]`;
+      setVisionStatus("error", "Vision: description failed");
+      showToast(
+        `Image description unavailable: ${visionLastError}`,
+        "error",
+        7000,
+      );
+    }
+  }
+  userText = userText.trim();
+
+  appendMessage("user", userText);
+  state.messages.push({ role: "user", content: userText });
   state.streaming = true;
   currentAssistantBubble = null;
   updateLLMUI();
+  setChatAttachment(null, true);
 
   const request = {
     messages: state.messages,
@@ -374,6 +491,16 @@ async function sendChat() {
 }
 
 chatSendBtn.addEventListener("click", sendChat);
+
+chatAttachBtn.addEventListener("click", async () => {
+  const file = await window.My.dialog.openFile([
+    { name: "Images", extensions: ["png", "jpg", "jpeg", "webp", "bmp"] },
+  ]);
+  if (!file) return;
+  setChatAttachment(file);
+});
+
+chatAttachClearBtn.addEventListener("click", () => setChatAttachment(null));
 
 chatInput.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey) {
@@ -467,14 +594,33 @@ function buildPrompt(): string {
   const name = ($("#pb-name") as HTMLInputElement).value.trim();
   const position = ($("#pb-position") as HTMLTextAreaElement).value.trim();
   const weights = ($("#pb-weights") as HTMLTextAreaElement).value.trim();
-  return [head, name, position, weights].filter(Boolean).join(". ");
+  const positionWeight = parseFloat(
+    ($("#pb-position-weight") as HTMLInputElement).value,
+  );
+  const weightedPosition = position
+    ? positionWeight > 1
+      ? `(${position}:${positionWeight.toFixed(2)})`
+      : position
+    : "";
+  return [head, name, weightedPosition, weights].filter(Boolean).join(". ");
 }
 
 function updatePromptPreview() {
+  const posWeightInput = $("#pb-position-weight") as HTMLInputElement;
+  const posWeightVal = $("#pb-position-weight-val");
+  if (posWeightInput && posWeightVal) {
+    posWeightVal.textContent = parseFloat(posWeightInput.value).toFixed(2);
+  }
   $("#full-prompt-preview").textContent = buildPrompt();
 }
 
-["#pb-head", "#pb-name", "#pb-position", "#pb-weights"].forEach((id) => {
+[
+  "#pb-head",
+  "#pb-name",
+  "#pb-position",
+  "#pb-weights",
+  "#pb-position-weight",
+].forEach((id) => {
   $(id).addEventListener("input", updatePromptPreview);
 });
 updatePromptPreview();
@@ -647,7 +793,26 @@ const POSE_PRESETS = [
 
 const posePresetSelect = $<HTMLSelectElement>("#pb-position-preset");
 const poseAppendBtn = $<HTMLButtonElement>("#pb-position-append");
+const poseUndoBtn = $<HTMLButtonElement>("#pb-position-undo");
 const pbPosition = $<HTMLTextAreaElement>("#pb-position");
+const positionAppendUndoStack: string[] = [];
+
+function pushPositionUndoSnapshot() {
+  positionAppendUndoStack.push(pbPosition.value);
+  if (positionAppendUndoStack.length > 25) positionAppendUndoStack.shift();
+  poseUndoBtn.disabled = positionAppendUndoStack.length === 0;
+}
+
+function appendToPosition(text: string) {
+  const incoming = text.trim();
+  if (!incoming) return;
+  pushPositionUndoSnapshot();
+  const current = pbPosition.value.trim();
+  pbPosition.value = current
+    ? `${current}${current.endsWith(",") ? "" : ","} ${incoming}`
+    : incoming;
+  updatePromptPreview();
+}
 
 // Populate the dropdown
 POSE_PRESETS.forEach((p) => {
@@ -672,23 +837,235 @@ poseAppendBtn.addEventListener("click", () => {
     showToast("Pick a pose first", "info");
     return;
   }
-  const current = pbPosition.value.trim();
-  if (current) {
-    pbPosition.value = current + ", " + val;
-  } else {
-    pbPosition.value = val;
-  }
-  updatePromptPreview();
+  appendToPosition(val);
   // Reset dropdown so they can pick another
   posePresetSelect.value = "";
 });
 
+poseUndoBtn.addEventListener("click", () => {
+  const prev = positionAppendUndoStack.pop();
+  if (prev === undefined) return;
+  pbPosition.value = prev;
+  poseUndoBtn.disabled = positionAppendUndoStack.length === 0;
+  updatePromptPreview();
+  showToast("Reverted last append", "info");
+});
+
 // ── Enhance prompt via LLM ──────────────────────────────────────────────
 const enhanceBtn = $<HTMLButtonElement>("#enhance-prompt-btn");
+const describeBtn = $<HTMLButtonElement>("#describe-prompt-btn");
+const describeModeFull = $<HTMLInputElement>("#describe-mode-full");
+const describeModePosition = $<HTMLInputElement>("#describe-mode-position");
+const describeModePositionAppend = $<HTMLInputElement>(
+  "#describe-mode-position-append",
+);
+const pbDescribeOutput = $<HTMLTextAreaElement>("#pb-describe-output");
+const pbDescribeUsePositionBtn = $<HTMLButtonElement>(
+  "#pb-describe-use-position",
+);
+const pbDescribeUseWeightsBtn = $<HTMLButtonElement>(
+  "#pb-describe-use-weights",
+);
+
+function setDescribeOutput(text: string) {
+  pbDescribeOutput.value = text.trim();
+}
+
+pbDescribeUsePositionBtn.addEventListener("click", () => {
+  const t = pbDescribeOutput.value.trim();
+  if (!t) {
+    showToast("Describe Output is empty", "info");
+    return;
+  }
+  ($("#pb-position") as HTMLTextAreaElement).value = t;
+  updatePromptPreview();
+  showToast("Applied to Position", "success");
+});
+
+pbDescribeUseWeightsBtn.addEventListener("click", () => {
+  const t = pbDescribeOutput.value.trim();
+  if (!t) {
+    showToast("Describe Output is empty", "info");
+    return;
+  }
+  ($("#pb-weights") as HTMLTextAreaElement).value = t;
+  updatePromptPreview();
+  showToast("Applied to Weights", "success");
+});
+
+async function ensurePromptToolsLLMReady(): Promise<boolean> {
+  // Fast path when UI state is already accurate.
+  if (state.llmReady) return true;
+
+  try {
+    const status = await window.My.llm.status();
+    state.llmReady = !!status.ready;
+    state.llmLoading = !!status.running && !status.ready;
+    updateLLMUI();
+
+    if (status.ready) return true;
+    if (status.running && !status.ready) {
+      showToast("LLM is still loading. Please wait a moment.", "info");
+      return false;
+    }
+  } catch {
+    // Fall through to user-facing guidance.
+  }
+
+  showToast("Load the LLM model first (Chat panel → Load Model)", "error");
+  return false;
+}
+
+describeBtn.addEventListener("click", async () => {
+  if (!(await ensurePromptToolsLLMReady())) {
+    return;
+  }
+  if (state.streaming) {
+    showToast("LLM is busy. Wait for the current response to finish.", "info");
+    return;
+  }
+
+  const subject = ($("#pb-name") as HTMLInputElement).value.trim();
+  const position = ($("#pb-position") as HTMLTextAreaElement).value.trim();
+  const weights = ($("#pb-weights") as HTMLTextAreaElement).value.trim();
+  const describePositionOnly = describeModePosition.checked;
+  const appendPosition = describeModePositionAppend.checked;
+
+  if (!subject && !position && !weights) {
+    showToast("Fill in at least one prompt field first", "info");
+    return;
+  }
+
+  const raw = [subject, position, weights].filter(Boolean).join(". ");
+
+  describeBtn.disabled = true;
+  enhanceBtn.disabled = true;
+  describeBtn.textContent = "Describing…";
+
+  let result = "";
+  let finished = false;
+
+  const dispose = window.My.llm.onEvent((msg: BridgeMsg) => {
+    if (finished) return;
+    if (msg.type === "token") {
+      result += (msg["text"] || "") as string;
+    } else if (msg.type === "done") {
+      finished = true;
+      dispose();
+
+      let cleaned = result.trim();
+      cleaned = cleaned.replace(/^["'`]+|["'`]+$/g, "");
+      setDescribeOutput(cleaned);
+
+      if (describePositionOnly || appendPosition) {
+        const posEl = $("#pb-position") as HTMLTextAreaElement;
+        if (appendPosition) {
+          appendToPosition(cleaned);
+        } else {
+          posEl.value = cleaned;
+          updatePromptPreview();
+        }
+      } else {
+        const parts = cleaned.split(
+          /\.\s*(?=(?:soft|warm|dramatic|cinematic|natural|golden|studio|ambient|neon|moody|harsh|diffuse|rim|backlit|side|hard|subtle))/i,
+        );
+        if (parts.length >= 2) {
+          ($("#pb-position") as HTMLTextAreaElement).value = parts[0].trim();
+          ($("#pb-weights") as HTMLTextAreaElement).value = parts
+            .slice(1)
+            .join(". ")
+            .trim();
+        } else {
+          ($("#pb-position") as HTMLTextAreaElement).value = cleaned;
+        }
+      }
+      if (!describePositionOnly && !appendPosition) updatePromptPreview();
+      describeBtn.disabled = false;
+      enhanceBtn.disabled = false;
+      describeBtn.textContent = "📝 Describe";
+      showToast("Description applied ✓", "success");
+    } else if (msg.type === "error") {
+      finished = true;
+      dispose();
+      describeBtn.disabled = false;
+      enhanceBtn.disabled = false;
+      describeBtn.textContent = "📝 Describe";
+      showToast(
+        `Describe failed: ${msg["message"] || "unknown error"}`,
+        "error",
+        7000,
+      );
+    }
+  });
+
+  const systemPrompt =
+    describePositionOnly || appendPosition
+      ? "You are an expert visual pose describer for SDXL prompts. " +
+        "Given rough user text, produce ONE concise position/action description only. " +
+        "Output only plain text, no bullets, no quotes, no headings, under 45 words."
+      : "You are an expert Stable Diffusion XL prompt engineer. " +
+        "Given rough user text, write a concise visual description suitable for the Position/Action and style fields. " +
+        "Output only plain text, no bullets, no quotes, under 90 words.";
+
+  const describeReq = await window.My.llm.chat({
+    messages: [{ role: "user", content: raw }],
+    system: systemPrompt,
+    max_tokens: describePositionOnly || appendPosition ? 140 : 220,
+    temperature: 0.75,
+    top_p: 0.9,
+  });
+
+  if (!describeReq.ok) {
+    finished = true;
+    dispose();
+    describeBtn.disabled = false;
+    enhanceBtn.disabled = false;
+    describeBtn.textContent = "📝 Describe";
+    showToast(`Describe failed: ${describeReq.error}`, "error", 6000);
+    return;
+  }
+
+  setTimeout(() => {
+    if (!finished) {
+      finished = true;
+      dispose();
+      describeBtn.disabled = false;
+      enhanceBtn.disabled = false;
+      describeBtn.textContent = "📝 Describe";
+      if (result.trim()) {
+        const trimmed = result.trim();
+        setDescribeOutput(trimmed);
+        if (describePositionOnly || appendPosition) {
+          const posEl = $("#pb-position") as HTMLTextAreaElement;
+          const incoming = trimmed;
+          if (appendPosition) {
+            appendToPosition(incoming);
+          } else {
+            posEl.value = incoming;
+            updatePromptPreview();
+          }
+        } else {
+          ($("#pb-position") as HTMLTextAreaElement).value = result.trim();
+          updatePromptPreview();
+        }
+        showToast("Partial description applied", "info");
+      } else {
+        showToast(
+          "Describe timed out (model is taking too long). Try lower max tokens or click again.",
+          "error",
+          8000,
+        );
+      }
+    }
+  }, 180000);
+});
 
 enhanceBtn.addEventListener("click", async () => {
-  if (!state.llmReady) {
-    showToast("Load the LLM first (Chat screen → Load Model)", "error");
+  if (!(await ensurePromptToolsLLMReady())) {
+    return;
+  }
+  if (state.streaming) {
+    showToast("LLM is busy. Wait for the current response to finish.", "info");
     return;
   }
 
@@ -722,6 +1099,7 @@ enhanceBtn.addEventListener("click", async () => {
       // Strip any wrapping quotes/backticks the LLM might add.
       let cleaned = result.trim();
       cleaned = cleaned.replace(/^["'`]+|["'`]+$/g, "");
+      setDescribeOutput(cleaned);
 
       // Split into position/action + style/lighting if the LLM gave us
       // two clear sections, otherwise put everything into position.
@@ -746,7 +1124,11 @@ enhanceBtn.addEventListener("click", async () => {
       dispose();
       enhanceBtn.disabled = false;
       enhanceBtn.textContent = "✨ Enhance";
-      showToast("Enhance failed — check LLM", "error");
+      showToast(
+        `Enhance failed: ${msg["message"] || "unknown error"}`,
+        "error",
+        7000,
+      );
     }
   });
 
@@ -759,7 +1141,7 @@ enhanceBtn.addEventListener("click", async () => {
     "Output ONLY the improved prompt — no explanation, no headings, " +
     "no bullet points, no quotes. Keep it under 120 words.";
 
-  await window.My.llm.chat({
+  const enhanceReq = await window.My.llm.chat({
     messages: [
       { role: "system", content: systemPrompt },
       { role: "user", content: raw },
@@ -767,6 +1149,15 @@ enhanceBtn.addEventListener("click", async () => {
     max_tokens: 300,
     temperature: 0.8,
   });
+
+  if (!enhanceReq.ok) {
+    finished = true;
+    dispose();
+    enhanceBtn.disabled = false;
+    enhanceBtn.textContent = "✨ Enhance";
+    showToast(`Enhance failed: ${enhanceReq.error}`, "error", 6000);
+    return;
+  }
 
   // Timeout: if the LLM never fires "done" within 30s, give up
   setTimeout(() => {
@@ -776,14 +1167,20 @@ enhanceBtn.addEventListener("click", async () => {
       enhanceBtn.disabled = false;
       enhanceBtn.textContent = "✨ Enhance";
       if (result) {
-        ($("#pb-position") as HTMLTextAreaElement).value = result.trim();
+        const trimmed = result.trim();
+        setDescribeOutput(trimmed);
+        ($("#pb-position") as HTMLTextAreaElement).value = trimmed;
         updatePromptPreview();
         showToast("Partial enhance applied", "info");
       } else {
-        showToast("Enhance timed out", "error");
+        showToast(
+          "Enhance timed out (model is taking too long). Try lower max tokens or click again.",
+          "error",
+          8000,
+        );
       }
     }
-  }, 30000);
+  }, 180000);
 });
 
 // Range sliders for image
@@ -2104,6 +2501,16 @@ function setTrainTestBusy(busy: boolean) {
   trainTestBtn.textContent = busy ? "⏳ Testing…" : "▶ Test in Chat";
 }
 
+async function maybeEnableTrainTestButton() {
+  const cfg = readTrainConfig();
+  const mergedPath = `${cfg.output_dir}-merged`;
+  const hasMerged = await window.My.models.exists(mergedPath);
+  trainTestBtn.disabled = trainState.running || trainTestBusy || !hasMerged;
+  if (hasMerged) {
+    trainTestBtn.dataset["mergedPath"] = mergedPath;
+  }
+}
+
 function setTrainRunning(running: boolean) {
   trainState.running = running;
   trainStartBtn.disabled = running;
@@ -2142,7 +2549,10 @@ $("#train-model-browse").addEventListener("click", async () => {
 });
 $("#train-output-browse").addEventListener("click", async () => {
   const dir = await window.My.dialog.openDir();
-  if (dir) ($("#train-output-path") as HTMLInputElement).value = dir;
+  if (dir) {
+    ($("#train-output-path") as HTMLInputElement).value = dir;
+    void maybeEnableTrainTestButton();
+  }
 });
 $("#train-dataset-browse").addEventListener("click", async () => {
   const file = await window.My.dialog.openFile([
@@ -2156,6 +2566,7 @@ $("#train-dataset-browse").addEventListener("click", async () => {
 window.My.onPaths((paths) => {
   const modelInput = $<HTMLInputElement>("#train-model-path");
   if (!modelInput.value && paths.llmModel) modelInput.value = paths.llmModel;
+  void maybeEnableTrainTestButton();
 });
 
 function readTrainConfig(): TrainConfig {
@@ -2214,7 +2625,7 @@ trainMergeBtn.addEventListener("click", async () => {
   const res = await runMergeFromTrain(cfg);
   if (res.ok) {
     showToast("Merge complete ✓", "success");
-    trainTestBtn.disabled = false;
+    await maybeEnableTrainTestButton();
   } else {
     trainLogLine(`Merge failed: ${res.error}`, "err");
     showToast(`Merge failed: ${res.error}`, "error", 6000);
@@ -2223,21 +2634,40 @@ trainMergeBtn.addEventListener("click", async () => {
 
 trainTestBtn.addEventListener("click", async () => {
   const cfg = readTrainConfig();
-  if (!cfg.model_path || !cfg.output_dir) {
-    showToast("Set base model + adapter output directory first", "error");
+  if (!cfg.output_dir) {
+    showToast("Set adapter output directory first", "error");
     return;
   }
 
   setTrainTestBusy(true);
   try {
-    const mergeRes = await runMergeFromTrain(cfg);
-    if (!mergeRes.ok) {
-      trainLogLine(`Merge failed: ${mergeRes.error}`, "err");
-      showToast(`Merge failed: ${mergeRes.error}`, "error", 6000);
+    const mergedPath = `${cfg.output_dir}-merged`;
+    let canLoadMerged = await window.My.models.exists(mergedPath);
+
+    // If no merged model exists yet, merge now (requires base model + adapter dir).
+    if (!canLoadMerged) {
+      if (!cfg.model_path) {
+        showToast(
+          "Set base model path (or merge once first) before Test in Chat",
+          "error",
+          6000,
+        );
+        return;
+      }
+      const mergeRes = await runMergeFromTrain(cfg);
+      if (!mergeRes.ok) {
+        trainLogLine(`Merge failed: ${mergeRes.error}`, "err");
+        showToast(`Merge failed: ${mergeRes.error}`, "error", 6000);
+        return;
+      }
+      canLoadMerged = true;
+    }
+
+    if (!canLoadMerged) {
+      showToast("Merged model not found", "error");
       return;
     }
 
-    const mergedPath = mergeRes.mergedPath;
     trainLogLine(`load ${mergedPath}`, "", "cmd");
     // Stop any running LLM first
     await window.My.llm.stop();
@@ -2252,6 +2682,7 @@ trainTestBtn.addEventListener("click", async () => {
     activateScreen("chat");
   } finally {
     setTrainTestBusy(false);
+    await maybeEnableTrainTestButton();
   }
 });
 
@@ -2308,7 +2739,7 @@ window.My.train.onEvent((msg: BridgeMsg) => {
       showToast("Training complete ✓", "success");
       trainBar.style.width = "100%";
       setTrainRunning(false);
-      trainTestBtn.disabled = false;
+      void maybeEnableTrainTestButton();
       break;
     case "error":
       trainLogLine(`✗ ${msg["message"]}`, "err");
