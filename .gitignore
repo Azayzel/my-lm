@@ -13,6 +13,7 @@ __pycache__/
 .coverage
 htmlcov/
 ui/dreamshaper-xl/
+ui/juggernaut-3b/
 # Node / Electron
 node_modules/
 dist/

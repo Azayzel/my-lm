@@ -1352,12 +1352,10 @@ document.querySelectorAll<HTMLElement>(".ribbon-tab").forEach((tab) => {
       .forEach((c) => (c.style.display = "none"));
 
     // Deactivate all tabs
-    document
-      .querySelectorAll<HTMLElement>(".ribbon-tab")
-      .forEach((t) => {
-        t.style.borderBottomColor = "transparent";
-        t.style.color = "var(--text2)";
-      });
+    document.querySelectorAll<HTMLElement>(".ribbon-tab").forEach((t) => {
+      t.style.borderBottomColor = "transparent";
+      t.style.color = "var(--text2)";
+    });
 
     // Show selected content
     const content = document.querySelector<HTMLElement>(

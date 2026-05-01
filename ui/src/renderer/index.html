@@ -19,22 +19,23 @@
       }
 
       :root {
-        --bg0: #0d0d0f;
-        --bg1: #13131a;
-        --bg2: #1a1a24;
-        --bg3: #22222f;
-        --bg4: #2a2a3a;
-        --accent: #7c5cfc;
-        --accent2: #5c8cfc;
-        --accent-glow: rgba(124, 92, 252, 0.3);
-        --text: #e8e8f0;
-        --text2: #9898b0;
-        --text3: #5a5a70;
-        --border: #2a2a3a;
-        --success: #4ade80;
-        --warn: #facc15;
+        --bg0: #0f1117;
+        --bg1: #141920;
+        --bg2: #1a2130;
+        --bg3: #202840;
+        --bg4: #293350;
+        --accent: #3ecf8e;
+        --accent2: #22c55e;
+        --accent-glow: rgba(62, 207, 142, 0.22);
+        --text: #e2e8f0;
+        --text1: #f1f5f9;
+        --text2: #94a3b8;
+        --text3: #475569;
+        --border: #1e2d40;
+        --success: #3ecf8e;
+        --warn: #f59e0b;
         --danger: #f87171;
-        --radius: 10px;
+        --radius: 12px;
         --sidebar-w: 220px;
         --titlebar-h: 40px;
       }
@@ -71,9 +72,7 @@
         font-weight: 700;
         font-size: 15px;
         letter-spacing: 0.5px;
-        background: linear-gradient(135deg, var(--accent), var(--accent2));
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
+        color: var(--accent);
       }
       #titlebar .title-spacer {
         flex: 1;
@@ -130,9 +129,9 @@
         display: flex;
         align-items: center;
         gap: 10px;
-        padding: 10px 16px;
+        padding: 9px 14px;
         cursor: pointer;
-        border-radius: 8px;
+        border-radius: 10px;
         margin: 2px 8px;
         color: var(--text2);
         font-size: 13px;
@@ -140,19 +139,16 @@
         transition:
           background 0.15s,
           color 0.15s;
+        border: 1px solid transparent;
       }
       .nav-btn:hover {
-        background: var(--bg3);
-        color: var(--text);
+        background: rgba(255,255,255,0.04);
+        color: var(--text1);
       }
       .nav-btn.active {
-        background: linear-gradient(
-          135deg,
-          rgba(124, 92, 252, 0.2),
-          rgba(92, 140, 252, 0.1)
-        );
+        background: rgba(62, 207, 142, 0.1);
         color: var(--accent);
-        border: 1px solid rgba(124, 92, 252, 0.3);
+        border-color: rgba(62, 207, 142, 0.2);
       }
       .nav-btn .icon {
         font-size: 18px;
@@ -166,8 +162,8 @@
       }
       .model-status {
         border-radius: var(--radius);
-        background: var(--bg2);
-        border: 1px solid var(--border);
+        background: rgba(62, 207, 142, 0.05);
+        border: 1px solid rgba(62, 207, 142, 0.15);
         padding: 10px 12px;
         font-size: 11px;
       }
@@ -299,7 +295,8 @@
         background: var(--bg3);
       }
       .msg.user .avatar {
-        background: linear-gradient(135deg, var(--accent), var(--accent2));
+        background: var(--accent);
+        color: #0f1117;
       }
       .msg.assistant .avatar {
         background: var(--bg3);
@@ -312,15 +309,19 @@
         font-size: 13.5px;
       }
       .msg.user .bubble {
-        background: linear-gradient(135deg, var(--accent), var(--accent2));
-        color: #fff;
+        background: var(--accent);
+        color: #0f1117;
         border-bottom-right-radius: 4px;
+        font-weight: 500;
       }
       .msg.assistant .bubble {
         background: var(--bg2);
         border: 1px solid var(--border);
         color: var(--text);
         border-bottom-left-radius: 4px;
+      }
+      .msg.assistant .bubble strong {
+        color: var(--accent);
       }
       /* Allow text selection in content areas */
       .bubble,
@@ -441,7 +442,8 @@
         transition: border-color 0.2s;
       }
       .input-wrap:focus-within {
-        border-color: var(--accent);
+        border-color: rgba(62, 207, 142, 0.5);
+        box-shadow: 0 0 0 3px rgba(62, 207, 142, 0.08);
       }
       #chat-input {
         flex: 1;
@@ -463,13 +465,14 @@
         width: 36px;
         height: 36px;
         border-radius: 10px;
-        background: linear-gradient(135deg, var(--accent), var(--accent2));
+        background: var(--accent);
         border: none;
-        color: #fff;
+        color: #0f1117;
         font-size: 18px;
         cursor: pointer;
         transition: opacity 0.2s;
         flex-shrink: 0;
+        font-weight: 700;
       }
       #chat-send-btn:disabled {
         opacity: 0.4;
@@ -638,7 +641,8 @@
       .field-input:focus,
       .field-textarea:focus,
       .field-select:focus {
-        border-color: var(--accent);
+        border-color: rgba(62, 207, 142, 0.5);
+        box-shadow: 0 0 0 3px rgba(62, 207, 142, 0.08);
       }
       .field-textarea {
         resize: vertical;
@@ -662,17 +666,22 @@
         cursor: default;
       }
       .btn-primary {
-        background: linear-gradient(135deg, var(--accent), var(--accent2));
-        color: #fff;
+        background: var(--accent);
+        color: #0f1117;
+        font-weight: 700;
       }
       .btn-danger {
         background: var(--danger);
         color: #fff;
       }
       .btn-ghost {
-        background: var(--bg3);
+        background: rgba(255,255,255,0.04);
         border: 1px solid var(--border);
         color: var(--text2);
+      }
+      .btn-ghost:hover {
+        border-color: var(--accent);
+        color: var(--accent);
       }
       .btn-block {
         width: 100%;
@@ -827,7 +836,7 @@
       }
 
       .ribbon-tab.active {
-        color: var(--text1);
+        color: var(--accent);
         border-bottom-color: var(--accent);
       }
 
