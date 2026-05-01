@@ -438,8 +438,7 @@ async function sendChat() {
       visionLastCaptionChars = caption.length;
       visionLastModel = vision.model || "caption model";
       visionLastError = "";
-      const usingFallback =
-        !!vision.warning || visionLastModel === "basic-vision-fallback";
+      const usingFallback = visionLastModel === "basic-vision-fallback";
       if (usingFallback) {
         visionLastError = "Fallback mode active: basic visual analysis";
       }

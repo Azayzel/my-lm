@@ -23,7 +23,6 @@ interface MyAPI {
       ok: boolean;
       caption?: string;
       model?: string;
-      warning?: string;
       error?: string;
     }>;
   };

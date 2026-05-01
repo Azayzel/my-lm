@@ -262,7 +262,6 @@ ipcMain.handle(
         ok: true,
         caption: String(parsed.caption),
         model: String(parsed.model || ""),
-        warning: parsed.warning ? String(parsed.warning) : undefined,
       };
     }
 
