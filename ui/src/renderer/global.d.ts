@@ -245,7 +245,7 @@ interface CatalogEntry {
   id: string;
   name: string;
   repoId: string;
-  category: "llm" | "image" | "upscaler" | "vae" | "face";
+  category: "llm" | "image" | "upscaler" | "vae" | "face" | "nsfw";
   minVramGb: number;
   sizeGb: number;
   description: string;

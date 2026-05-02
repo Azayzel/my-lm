@@ -74,17 +74,65 @@ def build_plain_prompt(messages):
     return "\n".join(lines)
 
 
+def _is_peft_adapter(model_path: str) -> bool:
+    """True if the path contains a PEFT adapter (not a full model)."""
+    return os.path.isfile(os.path.join(model_path, "adapter_config.json"))
+
+
+def _detect_device_map():
+    """Pick the best device_map for loading: GPU-only if CUDA available, else CPU."""
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            return {"": 0}
+    except ImportError:
+        pass
+    return "auto"
+
+
 def load_model(model_path: str):
     import threading
 
+    import torch
     from transformers import AutoModelForCausalLM, AutoTokenizer, TextIteratorStreamer
 
-    tokenizer = AutoTokenizer.from_pretrained(model_path)
-    model = AutoModelForCausalLM.from_pretrained(
-        model_path,
-        torch_dtype="auto",
-        device_map="auto",
-    )
+    dmap = _detect_device_map()
+    dtype = torch.float16 if dmap != "auto" else "auto"
+
+    if _is_peft_adapter(model_path):
+        import json
+
+        from peft import PeftModel
+
+        with open(os.path.join(model_path, "adapter_config.json")) as f:
+            adapter_cfg = json.load(f)
+        base_path = adapter_cfg.get("base_model_name_or_path", "")
+        if not base_path or not os.path.isdir(base_path):
+            raise FileNotFoundError(
+                f"Adapter base model not found: {base_path!r} "
+                f"(from {model_path}/adapter_config.json)"
+            )
+        emit({"type": "info", "message": f"Loading PEFT adapter on base {base_path}"})
+        tokenizer = AutoTokenizer.from_pretrained(base_path)
+        base_model = AutoModelForCausalLM.from_pretrained(
+            base_path,
+            dtype=dtype,
+            device_map=dmap,
+        )
+        model = PeftModel.from_pretrained(base_model, model_path)
+    else:
+        tokenizer = AutoTokenizer.from_pretrained(model_path)
+        model = AutoModelForCausalLM.from_pretrained(
+            model_path,
+            dtype=dtype,
+            device_map=dmap,
+        )
+
+    model.eval()
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+
     return model, tokenizer, TextIteratorStreamer, threading
 
 
@@ -97,40 +145,25 @@ def run_inference(model, tokenizer, TextIteratorStreamer, threading, request: di
     if not messages or messages[0].get("role") != "system":
         messages = [{"role": "system", "content": system_prompt}] + messages
 
-    # Prefer direct tensor generation from chat template, then fall back to a
-    # text template, and finally a plain prompt without chat template.
+    # Build the prompt text using chat template, fall back to plain format.
     try:
-        input_ids = tokenizer.apply_chat_template(
+        text = tokenizer.apply_chat_template(
             messages,
-            tokenize=True,
+            tokenize=False,
             add_generation_prompt=True,
-            return_tensors="pt",
         )
-        inputs = {"input_ids": input_ids.to(model.device)}
-    except Exception as e_template_tokens:
-        try:
-            text = tokenizer.apply_chat_template(
-                messages,
-                tokenize=False,
-                add_generation_prompt=True,
-            )
-            if not isinstance(text, str):
-                text = str(text)
-            tokenized = tokenizer(text, return_tensors="pt")
-            inputs = {k: v.to(model.device) for k, v in tokenized.items()}
-        except Exception as e_template_text:
-            plain_prompt = build_plain_prompt(messages)
-            try:
-                tokenized = tokenizer(plain_prompt, return_tensors="pt")
-                inputs = {k: v.to(model.device) for k, v in tokenized.items()}
-            except Exception as e_plain:
-                raise RuntimeError(
-                    "Failed to build model input. "
-                    f"template-tokenize={type(e_template_tokens).__name__}: {e_template_tokens}; "
-                    f"template-text={type(e_template_text).__name__}: {e_template_text}; "
-                    f"plain={type(e_plain).__name__}: {e_plain}; "
-                    f"messages={len(messages)}"
-                )
+        if not isinstance(text, str):
+            text = str(text)
+    except Exception:
+        text = build_plain_prompt(messages)
+
+    # Tokenize and move to model device
+    tokenized = tokenizer(text, return_tensors="pt")
+    inputs = {k: v.to(model.device) for k, v in tokenized.items()}
+
+    # Log input shape for diagnostics
+    input_len = inputs["input_ids"].shape[-1] if "input_ids" in inputs else "?"
+    emit({"type": "info", "message": f"Input tokens: {input_len}, max_new_tokens: {max_tokens}"})
 
     streamer = TextIteratorStreamer(
         tokenizer, skip_prompt=True, skip_special_tokens=True
@@ -151,7 +184,8 @@ def run_inference(model, tokenizer, TextIteratorStreamer, threading, request: di
         try:
             model.generate(**gen_kwargs)
         except Exception as e:
-            gen_error["message"] = str(e)
+            import traceback
+            gen_error["message"] = f"{type(e).__name__}: {e}\n{traceback.format_exc()}"
         finally:
             # Ensure the streamer loop can terminate even if generation fails.
             try:
@@ -162,14 +196,17 @@ def run_inference(model, tokenizer, TextIteratorStreamer, threading, request: di
     thread = threading.Thread(target=_generate_wrapper, daemon=True)
     thread.start()
 
+    token_count = 0
     for token_text in streamer:
         emit({"type": "token", "text": token_text})
+        token_count += 1
 
     # Wait briefly for the generation thread to settle after streamer end.
     thread.join(timeout=1.0)
     if gen_error["message"]:
         emit({"type": "error", "message": gen_error["message"]})
     else:
+        emit({"type": "info", "message": f"Generation complete: {token_count} tokens"})
         emit({"type": "done"})
 
 

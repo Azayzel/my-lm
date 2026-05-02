@@ -218,6 +218,7 @@ const llmLoadBtn = $("#llm-load-btn");
 const llmStopBtn = $("#llm-stop-btn");
 const llmUnloadBtn = $("#llm-unload-btn");
 const llmDot = $("#llm-dot");
+const chatModelSelect = $<HTMLSelectElement>("#chat-model-select");
 
 // Range sliders
 function bindRange(inputId: string, valId: string, decimals = 0) {
@@ -248,6 +249,32 @@ function updateLLMUI() {
 }
 
 updateLLMUI();
+
+// Chat sidebar model selector
+async function updateChatModelSelect() {
+  const models = await window.My.models.list();
+  const llmModels = models.filter((m) => m.type === "llm");
+  const prev = chatModelSelect.value;
+  chatModelSelect.innerHTML = '<option value="">-- Select a model --</option>';
+  llmModels.forEach((m) => {
+    const opt = document.createElement("option");
+    opt.value = m.path;
+    opt.textContent = `${m.name} (${(m.sizeGb || 0).toFixed(1)}GB)`;
+    chatModelSelect.appendChild(opt);
+  });
+  // Restore previous selection or sync from state
+  if (state.selectedLlmModel) chatModelSelect.value = state.selectedLlmModel;
+  else if (prev) chatModelSelect.value = prev;
+}
+
+chatModelSelect.addEventListener("change", () => {
+  state.selectedLlmModel = chatModelSelect.value;
+  // Sync the Models screen selector too
+  const modelsSelect = document.querySelector<HTMLSelectElement>("#model-selector-llm");
+  if (modelsSelect) modelsSelect.value = state.selectedLlmModel;
+});
+
+updateChatModelSelect();
 
 // Subscribe to LLM events
 let currentAssistantBubble: HTMLElement | null = null;
@@ -318,8 +345,10 @@ function setChatAttachment(path: string | null, preserveVisionStatus = false) {
 }
 
 window.My.llm.onEvent((msg: BridgeMsg) => {
-  if (msg.type === "status") {
+  if (msg.type === "status" || msg.type === "info") {
     showToast(msg["message"] as string, "info");
+  } else if (msg.type === "stderr") {
+    console.warn("[LLM stderr]", msg["text"]);
   } else if (msg.type === "ready") {
     state.llmReady = true;
     state.llmLoading = false;
@@ -1394,6 +1423,7 @@ generateBtn.addEventListener("click", async () => {
       ($("#img-face-fix-strength") as HTMLInputElement).value,
     ),
     face_swap: doFaceSwap,
+    nsfw_seg: ($("#img-nsfw-seg") as HTMLInputElement).checked,
   };
   if (doFaceSwap && faceSwapSourcePath) {
     request.face_swap_source = faceSwapSourcePath;
@@ -1818,6 +1848,9 @@ async function updateModelSelectors() {
     opt.textContent = `${m.name} (${(m.sizeGb || 0).toFixed(1)}GB)`;
     imageSelect.appendChild(opt);
   });
+
+  // Keep chat sidebar dropdown in sync
+  await updateChatModelSelect();
 }
 
 // Download
@@ -1900,6 +1933,7 @@ const CAT_LABEL: Record<CatalogEntry["category"], string> = {
   image: "Image",
   upscaler: "Upscaler",
   face: "Face",
+  nsfw: "NSFW",
   vae: "VAE",
 };
 
@@ -1957,12 +1991,7 @@ function renderCatalog() {
       if (e.installed) return;
       btn.disabled = true;
       btn.textContent = "Downloading…";
-      const type =
-        e.category === "llm"
-          ? "llm"
-          : e.category === "image"
-            ? "image"
-            : "other";
+      const type = e.category === "image" ? "image" : "llm";
       logDownload(
         `▶ Installing ${e.name} (${e.repoId}) → models/${e.targetDir}`,
       );
@@ -2061,6 +2090,7 @@ $("#model-set-llm-btn").addEventListener("click", async () => {
     return;
   }
   state.selectedLlmModel = modelPath;
+  chatModelSelect.value = modelPath;
   const infoEl = $<HTMLElement>("#model-info-llm");
   const modelName = select.options[select.selectedIndex]?.text || modelPath;
   infoEl.textContent = `Current: ${modelName}`;
@@ -2990,6 +3020,7 @@ savePromptBtn.addEventListener("click", async () => {
       face_fix_strength: parseFloat(
         ($("#img-face-fix-strength") as HTMLInputElement).value,
       ),
+      nsfw_seg: ($("#img-nsfw-seg") as HTMLInputElement).checked,
     },
   };
   await window.My.prompts.save(entry);
@@ -3037,6 +3068,7 @@ loadPromptBtn.addEventListener("click", () => {
   if (params["height"] !== undefined) setInput("#img-height", params["height"]);
   setCheck("#img-upscale", params["upscale"]);
   setCheck("#img-face-fix", params["face_fix"]);
+  setCheck("#img-nsfw-seg", params["nsfw_seg"]);
   if (params["face_fix_strength"] !== undefined) {
     setInput("#img-face-fix-strength", params["face_fix_strength"]);
   }

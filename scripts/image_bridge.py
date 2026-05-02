@@ -181,6 +181,7 @@ def run_generation(
     output_dir: str,
     face_detector_path: str = "",
     tiny_vae=None,
+    nsfw_seg_model_dir: str = "",
 ):
     import torch
 
@@ -200,6 +201,7 @@ def run_generation(
     face_fix_strength = float(request.get("face_fix_strength", 0.45))
     do_face_swap = request.get("face_swap", False)
     face_swap_source = request.get("face_swap_source", "")  # path to source face image
+    do_nsfw_seg = request.get("nsfw_seg", False)
     filename = request.get("filename")
 
     # Pass both prompts as a list — compel batches them and auto-pads to the
@@ -307,6 +309,25 @@ def run_generation(
         except Exception as e:
             emit({"type": "log", "text": f"Upscale failed: {e}"})
 
+    # NSFW segmentation pass — detect regions and save masks
+    if do_nsfw_seg and nsfw_seg_model_dir and os.path.isdir(nsfw_seg_model_dir):
+        try:
+            emit({"type": "status", "message": "Running NSFW segmentation..."})
+            from mylm.imaging import load_segmenters, segment_nsfw
+
+            if not hasattr(run_generation, "_nsfw_models"):
+                run_generation._nsfw_models = load_segmenters(nsfw_seg_model_dir, variant="x")
+            masks = segment_nsfw(run_generation._nsfw_models, image)
+            mask_paths = {}
+            for region, mask in masks.items():
+                mask_path = Path(output_dir) / f"{base_name}_mask_{region}.png"
+                mask.save(mask_path)
+                mask_paths[region] = str(mask_path)
+            emit({"type": "masks", "regions": mask_paths})
+            torch.cuda.empty_cache()
+        except Exception as e:
+            emit({"type": "log", "text": f"NSFW segmentation failed: {e}"})
+
     # Always emit `done` with whatever path we have (base / face-fixed /
     # upscaled), BEFORE doing cleanup that might fail. That way the UI
     # always hears about completion.
@@ -338,6 +359,7 @@ def main():
     upscaler_path = sys.argv[2]
     output_dir = sys.argv[3]
     face_detector_path = sys.argv[4] if len(sys.argv) > 4 else ""
+    nsfw_seg_model_dir = sys.argv[5] if len(sys.argv) > 5 else ""
 
     Path(output_dir).mkdir(parents=True, exist_ok=True)
 
@@ -372,6 +394,7 @@ def main():
                 output_dir,
                 face_detector_path,
                 tiny_vae=tiny_vae,
+                nsfw_seg_model_dir=nsfw_seg_model_dir,
             )
         except Exception as e:
             emit({"type": "error", "message": str(e)})

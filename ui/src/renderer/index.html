@@ -2239,6 +2239,9 @@
           <div id="chat-side-panel">
             <div class="side-section">
               <h3>LLM Model</h3>
+              <select class="field-select" id="chat-model-select" style="width: 100%; margin-bottom: 8px">
+                <option value="">-- Select a model --</option>
+              </select>
               <div class="btn btn-primary btn-block" id="llm-load-btn">
                 Load Model
               </div>
@@ -2631,6 +2634,14 @@ face asymmetry, eyes asymmetry, deformed eyes, open mouth, cartoon, painting, bl
                         style="accent-color: var(--accent); cursor: pointer"
                       />
                       <span style="font-size: 11px">Face Fix (ADetailer-style)</span>
+                    </label>
+                    <label class="field-label" style="display: flex; align-items: center; gap: 6px; cursor: pointer; margin: 0; font-weight: normal">
+                      <input
+                        type="checkbox"
+                        id="img-nsfw-seg"
+                        style="accent-color: var(--accent); cursor: pointer"
+                      />
+                      <span style="font-size: 11px">NSFW Segmentation (save masks)</span>
                     </label>
                   </div>
 
@@ -3341,6 +3352,7 @@ face asymmetry, eyes asymmetry, deformed eyes, open mouth, cartoon, painting, bl
                   <option value="image">Image Models</option>
                   <option value="upscaler">Upscalers</option>
                   <option value="face">Face Detectors</option>
+                  <option value="nsfw">NSFW Segmentation</option>
                   <option value="vae">Preview VAEs</option>
                 </select>
               </div>

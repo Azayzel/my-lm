@@ -35,6 +35,7 @@ const FACE_DETECTOR_PATH = path.join(
   "face_detector",
   "face_yolov8n.pt",
 );
+const NSFW_SEG_MODEL_DIR = path.join(MODELS_DIR, "nsfw_segmentation");
 
 // Resolve the Python executable: prefer the project .venv, then fall back to PATH
 function resolvePython(): string {
@@ -285,6 +286,7 @@ ipcMain.handle("image:start", async (_e, modelPath?: string) => {
     OUTPUTS_DIR,
     PYTHON,
     FACE_DETECTOR_PATH,
+    NSFW_SEG_MODEL_DIR,
   );
   return imageBridge.start((msg) => {
     mainWindow?.webContents.send("image:event", msg);
