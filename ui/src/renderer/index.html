@@ -19,38 +19,89 @@
       }
 
       :root {
-        --bg0: #0f1117;
-        --bg1: #141920;
-        --bg2: #1a2130;
-        --bg3: #202840;
-        --bg4: #293350;
-        --accent: #3ecf8e;
-        --accent2: #22c55e;
-        --accent-glow: rgba(62, 207, 142, 0.22);
-        --text: #e2e8f0;
-        --text1: #f1f5f9;
-        --text2: #94a3b8;
-        --text3: #475569;
-        --border: #1e2d40;
-        --success: #3ecf8e;
-        --warn: #f59e0b;
-        --danger: #f87171;
-        --radius: 12px;
-        --sidebar-w: 220px;
-        --titlebar-h: 40px;
+        --bg0: #060b12;
+        --bg1: #0d1623;
+        --bg2: #111d2e;
+        --bg3: #17243a;
+        --bg4: #22314c;
+        --accent: #65f3d8;
+        --accent2: #6ec8ff;
+        --accent-glow: rgba(101, 243, 216, 0.28);
+        --text: #dfe9ff;
+        --text1: #f5f9ff;
+        --text2: #93a9c7;
+        --text3: #5c708d;
+        --border: rgba(156, 191, 231, 0.18);
+        --success: #5bf2b4;
+        --warn: #f5c45a;
+        --danger: #ff7f96;
+        --radius: 16px;
+        --sidebar-w: 236px;
+        --titlebar-h: 44px;
+        --glass-bg: linear-gradient(
+          160deg,
+          rgba(255, 255, 255, 0.08),
+          rgba(255, 255, 255, 0.02)
+        );
+        --shadow-soft: 0 18px 40px rgba(0, 0, 0, 0.35);
+        --shadow-glow: 0 0 0 1px rgba(110, 200, 255, 0.1),
+          0 0 40px rgba(101, 243, 216, 0.12);
       }
 
       html,
       body {
         height: 100%;
         width: 100%;
-        background: var(--bg0);
+        background: radial-gradient(
+            1200px 700px at 15% -10%,
+            rgba(110, 200, 255, 0.14),
+            transparent 58%
+          ),
+          radial-gradient(
+            900px 520px at 88% 5%,
+            rgba(84, 120, 255, 0.16),
+            transparent 62%
+          ),
+          linear-gradient(155deg, #060b12 0%, #0a1220 42%, #0c1628 100%);
         color: var(--text);
-        font-family:
-          -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+        font-family: "Segoe UI Variable Display", "Bahnschrift", "Trebuchet MS",
+          "Calibri", sans-serif;
         font-size: 14px;
         overflow: hidden;
         user-select: none;
+        letter-spacing: 0.01em;
+      }
+
+      body::before,
+      body::after {
+        content: "";
+        position: fixed;
+        border-radius: 999px;
+        filter: blur(48px);
+        pointer-events: none;
+        z-index: 0;
+      }
+      body::before {
+        width: 420px;
+        height: 420px;
+        left: -140px;
+        top: 38%;
+        background: radial-gradient(
+          circle,
+          rgba(101, 243, 216, 0.2),
+          rgba(101, 243, 216, 0)
+        );
+      }
+      body::after {
+        width: 520px;
+        height: 520px;
+        right: -180px;
+        top: 6%;
+        background: radial-gradient(
+          circle,
+          rgba(110, 200, 255, 0.22),
+          rgba(110, 200, 255, 0)
+        );
       }
 
       /* ── Titlebar ─────────────────────────────────────────────────── */
@@ -60,8 +111,9 @@
         left: 0;
         right: 0;
         height: var(--titlebar-h);
-        background: var(--bg1);
-        border-bottom: 1px solid var(--border);
+        background: rgba(6, 12, 22, 0.72);
+        backdrop-filter: blur(18px);
+        border-bottom: 1px solid rgba(156, 191, 231, 0.22);
         display: flex;
         align-items: center;
         -webkit-app-region: drag;
@@ -70,9 +122,10 @@
       #titlebar .logo {
         padding: 0 16px;
         font-weight: 700;
-        font-size: 15px;
-        letter-spacing: 0.5px;
-        color: var(--accent);
+        font-size: 16px;
+        letter-spacing: 0.9px;
+        color: var(--text1);
+        text-shadow: 0 0 14px rgba(101, 243, 216, 0.35);
       }
       #titlebar .title-spacer {
         flex: 1;
@@ -93,7 +146,7 @@
         transition: background 0.15s;
       }
       #titlebar .win-btns button:hover {
-        background: var(--bg3);
+        background: rgba(255, 255, 255, 0.08);
       }
       #titlebar .win-btns button.close:hover {
         background: var(--danger);
@@ -105,13 +158,16 @@
         display: flex;
         height: 100vh;
         padding-top: var(--titlebar-h);
+        position: relative;
+        z-index: 1;
       }
 
       /* ── Sidebar ─────────────────────────────────────────────────── */
       #sidebar {
         width: var(--sidebar-w);
-        background: var(--bg1);
-        border-right: 1px solid var(--border);
+        background: rgba(11, 20, 34, 0.74);
+        border-right: 1px solid rgba(156, 191, 231, 0.2);
+        backdrop-filter: blur(18px);
         display: flex;
         flex-direction: column;
         padding: 12px 0;
@@ -129,26 +185,34 @@
         display: flex;
         align-items: center;
         gap: 10px;
-        padding: 9px 14px;
+        padding: 10px 14px;
         cursor: pointer;
-        border-radius: 10px;
+        border-radius: 12px;
         margin: 2px 8px;
         color: var(--text2);
         font-size: 13px;
-        font-weight: 500;
+        font-weight: 600;
         transition:
-          background 0.15s,
-          color 0.15s;
+          background 0.2s,
+          color 0.2s,
+          transform 0.2s,
+          border-color 0.2s;
         border: 1px solid transparent;
       }
       .nav-btn:hover {
-        background: rgba(255,255,255,0.04);
+        background: rgba(255, 255, 255, 0.08);
         color: var(--text1);
+        transform: translateX(2px);
       }
       .nav-btn.active {
-        background: rgba(62, 207, 142, 0.1);
-        color: var(--accent);
-        border-color: rgba(62, 207, 142, 0.2);
+        background: linear-gradient(
+          120deg,
+          rgba(101, 243, 216, 0.18),
+          rgba(110, 200, 255, 0.13)
+        );
+        color: var(--text1);
+        border-color: rgba(110, 200, 255, 0.28);
+        box-shadow: inset 0 0 0 1px rgba(101, 243, 216, 0.22);
       }
       .nav-btn .icon {
         font-size: 18px;
@@ -162,10 +226,15 @@
       }
       .model-status {
         border-radius: var(--radius);
-        background: rgba(62, 207, 142, 0.05);
-        border: 1px solid rgba(62, 207, 142, 0.15);
+        background: linear-gradient(
+          160deg,
+          rgba(101, 243, 216, 0.12),
+          rgba(110, 200, 255, 0.08)
+        );
+        border: 1px solid rgba(110, 200, 255, 0.22);
         padding: 10px 12px;
         font-size: 11px;
+        box-shadow: var(--shadow-glow);
       }
       .model-status .ms-label {
         color: var(--text3);
@@ -209,6 +278,25 @@
         flex-direction: column;
         overflow: hidden;
         position: relative;
+        background: linear-gradient(
+          180deg,
+          rgba(255, 255, 255, 0.02),
+          rgba(255, 255, 255, 0)
+        );
+      }
+
+      .screen.active > * {
+        animation: riseIn 0.35s ease both;
+      }
+      @keyframes riseIn {
+        from {
+          opacity: 0;
+          transform: translateY(12px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
       }
 
       /* ── Screen ───────────────────────────────────────────────────── */
@@ -629,20 +717,21 @@
       .field-select {
         width: 100%;
         padding: 7px 10px;
-        background: var(--bg2);
-        border: 1px solid var(--border);
-        border-radius: 8px;
+        background: rgba(8, 16, 28, 0.72);
+        border: 1px solid rgba(156, 191, 231, 0.22);
+        border-radius: 10px;
         color: var(--text);
         font-size: 12px;
         font-family: inherit;
-        transition: border-color 0.2s;
+        transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
         outline: none;
       }
       .field-input:focus,
       .field-textarea:focus,
       .field-select:focus {
-        border-color: rgba(62, 207, 142, 0.5);
-        box-shadow: 0 0 0 3px rgba(62, 207, 142, 0.08);
+        border-color: rgba(110, 200, 255, 0.55);
+        box-shadow: 0 0 0 3px rgba(110, 200, 255, 0.16);
+        background: rgba(12, 23, 40, 0.82);
       }
       .field-textarea {
         resize: vertical;
@@ -651,37 +740,39 @@
 
       .btn {
         padding: 8px 14px;
-        border-radius: 8px;
+        border-radius: 11px;
         font-size: 12px;
         font-weight: 600;
         cursor: pointer;
         border: none;
-        transition: opacity 0.2s;
+        transition: transform 0.2s, box-shadow 0.2s, opacity 0.2s;
       }
       .btn:hover {
-        opacity: 0.85;
+        opacity: 1;
+        transform: translateY(-1px);
       }
       .btn:disabled {
         opacity: 0.4;
         cursor: default;
       }
       .btn-primary {
-        background: var(--accent);
-        color: #0f1117;
+        background: linear-gradient(135deg, var(--accent), var(--accent2));
+        color: #06111f;
         font-weight: 700;
+        box-shadow: 0 8px 24px rgba(102, 213, 255, 0.24);
       }
       .btn-danger {
-        background: var(--danger);
+        background: linear-gradient(135deg, #ff8aa0, var(--danger));
         color: #fff;
       }
       .btn-ghost {
-        background: rgba(255,255,255,0.04);
-        border: 1px solid var(--border);
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(156, 191, 231, 0.2);
         color: var(--text2);
       }
       .btn-ghost:hover {
-        border-color: var(--accent);
-        color: var(--accent);
+        border-color: rgba(110, 200, 255, 0.42);
+        color: var(--text1);
       }
       .btn-block {
         width: 100%;
@@ -777,6 +868,98 @@
         border-radius: 2px;
         transition: width 0.3s;
         width: 0%;
+        box-shadow: 0 0 14px rgba(101, 243, 216, 0.32);
+      }
+
+      .folder-card,
+      .media-card,
+      .model-card,
+      .download-form,
+      .catalog-section,
+      .catalog-card,
+      .gpu-card,
+      .bench-section,
+      .bench-result-row,
+      .bench-chart,
+      .books-controls,
+      .books-panel,
+      .train-card,
+      .train-progress,
+      .settings-card,
+      #image-canvas-wrap,
+      #full-prompt-preview,
+      #gpu-raw,
+      #bench-log,
+      #download-log,
+      #diagnostics-log,
+      #train-log,
+      #bench-result-detail,
+      .ess-row,
+      #input-modal .modal-box,
+      #essentials-modal .modal-box,
+      .toast {
+        background: var(--glass-bg);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(156, 191, 231, 0.2);
+        box-shadow: var(--shadow-soft);
+      }
+
+      .media-card:hover,
+      .folder-card:hover,
+      .catalog-card:hover {
+        box-shadow: var(--shadow-soft), var(--shadow-glow);
+      }
+
+      .msg.assistant .bubble {
+        background: linear-gradient(
+          160deg,
+          rgba(17, 29, 46, 0.78),
+          rgba(19, 34, 54, 0.62)
+        );
+      }
+      .msg.user .bubble {
+        background: linear-gradient(130deg, var(--accent), var(--accent2));
+        color: #06111f;
+      }
+
+      #chat-input-bar,
+      #chat-side-panel,
+      #image-side-panel {
+        background: rgba(10, 18, 30, 0.72);
+        backdrop-filter: blur(14px);
+        border-color: rgba(156, 191, 231, 0.2);
+      }
+
+      .input-wrap {
+        background: rgba(8, 16, 28, 0.74);
+        border: 1px solid rgba(156, 191, 231, 0.22);
+      }
+      .input-wrap:focus-within {
+        border-color: rgba(110, 200, 255, 0.52);
+        box-shadow: 0 0 0 3px rgba(110, 200, 255, 0.16);
+      }
+
+      @media (max-width: 1100px) {
+        :root {
+          --sidebar-w: 86px;
+        }
+        .nav-btn {
+          justify-content: center;
+          gap: 0;
+          padding: 10px;
+        }
+        .nav-btn .icon {
+          font-size: 20px;
+        }
+        .nav-btn span:not(.icon),
+        .nav-section-label,
+        .sidebar-footer {
+          display: none;
+        }
+        #chat-side-panel,
+        #image-side-panel {
+          width: 248px;
+        }
       }
 
       /* image side panel */
@@ -3380,7 +3563,7 @@ face asymmetry, eyes asymmetry, deformed eyes, open mouth, cartoon, painting, bl
                   class="field-input"
                   id="dl-target-dir"
                   type="text"
-                  placeholder="Target folder name (in models/)"
+                  placeholder="Target folder name (optional, in models/)"
                 />
                 <button class="btn btn-ghost btn-sm" id="dl-browse-btn">
                   Browse

@@ -77,6 +77,36 @@ function resolveRepoPath(p?: string): string {
   if (!p) return "";
   return path.isAbsolute(p) ? p : path.join(ROOT, p);
 }
+
+function sanitizeRepoFolderName(repoId: string): string {
+  return repoId
+    .split("/")
+    .filter(Boolean)
+    .join("-")
+    .replace(/[^a-zA-Z0-9._-]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .toLowerCase();
+}
+
+function resolveModelDownloadTarget(repoId: string, targetDir: string): string {
+  const raw = (targetDir || "").trim();
+  const repoFolder = sanitizeRepoFolderName(repoId) || "model";
+
+  if (!raw) return path.join(MODELS_DIR, repoFolder);
+
+  if (path.isAbsolute(raw)) {
+    const normalized = path.normalize(raw);
+    if (normalized.toLowerCase() === path.normalize(MODELS_DIR).toLowerCase()) {
+      return path.join(normalized, repoFolder);
+    }
+    return normalized;
+  }
+
+  const normalizedRel = path.normalize(raw);
+  if (normalizedRel === ".") return path.join(MODELS_DIR, repoFolder);
+  return path.join(MODELS_DIR, normalizedRel);
+}
 fs.mkdirSync(THUMB_CACHE_DIR, { recursive: true });
 
 // Seed config from .env on first run (so existing users don't lose their setup)
@@ -675,7 +705,8 @@ ipcMain.handle("models:list", async () => modelManager.listModels());
 ipcMain.handle(
   "models:download",
   async (_e, repoId: string, targetDir: string, type: string) => {
-    modelManager.download(repoId, targetDir, type, PYTHON, (msg) => {
+    const resolvedTarget = resolveModelDownloadTarget(repoId, targetDir);
+    modelManager.download(repoId, resolvedTarget, type, PYTHON, (msg) => {
       mainWindow?.webContents.send("models:download:event", msg);
     });
     return { ok: true };

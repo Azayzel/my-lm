@@ -270,7 +270,9 @@ async function updateChatModelSelect() {
 chatModelSelect.addEventListener("change", () => {
   state.selectedLlmModel = chatModelSelect.value;
   // Sync the Models screen selector too
-  const modelsSelect = document.querySelector<HTMLSelectElement>("#model-selector-llm");
+  const modelsSelect = document.querySelector<HTMLSelectElement>(
+    "#model-selector-llm",
+  );
   if (modelsSelect) modelsSelect.value = state.selectedLlmModel;
 });
 
@@ -344,6 +346,18 @@ function setChatAttachment(path: string | null, preserveVisionStatus = false) {
   setVisionStatus("idle", "Vision: image attached");
 }
 
+// Throttle live markdown rendering to ~60ms intervals to avoid excessive reflows.
+let markdownRenderTimer: ReturnType<typeof setTimeout> | null = null;
+function scheduleMarkdownRender() {
+  if (markdownRenderTimer) return;
+  markdownRenderTimer = setTimeout(() => {
+    markdownRenderTimer = null;
+    if (currentAssistantBubble) {
+      currentAssistantBubble.innerHTML = renderMarkdown(currentAssistantText);
+    }
+  }, 60);
+}
+
 window.My.llm.onEvent((msg: BridgeMsg) => {
   if (msg.type === "status" || msg.type === "info") {
     showToast(msg["message"] as string, "info");
@@ -364,8 +378,8 @@ window.My.llm.onEvent((msg: BridgeMsg) => {
       currentAssistantBubble.classList.add("typing-cursor");
     }
     currentAssistantText += msg.text ?? "";
-    // Show raw text while streaming (fast, no reflow jitter)
-    currentAssistantBubble.textContent = currentAssistantText;
+    // Render markdown live, throttled to avoid excessive reflows
+    scheduleMarkdownRender();
     messagesEl.scrollTop = messagesEl.scrollHeight;
   } else if (msg.type === "done") {
     // Ignore done events from non-chat tool requests.
@@ -2044,12 +2058,13 @@ $("#dl-start-btn").addEventListener("click", async () => {
   const repoId = ($("#dl-repo-id") as HTMLInputElement).value.trim();
   const targetDir = ($("#dl-target-dir") as HTMLInputElement).value.trim();
   const type = ($("#dl-type") as HTMLSelectElement).value;
-  if (!repoId || !targetDir) {
-    showToast("Please fill in repo ID and target folder", "error");
+  if (!repoId) {
+    showToast("Please fill in repo ID", "error");
     return;
   }
   dlLog.textContent = "";
-  logDownload(`Starting download: ${repoId} → ${targetDir}`);
+  const targetLabel = targetDir || "models/<auto-from-repo>";
+  logDownload(`Starting download: ${repoId} → ${targetLabel}`);
   await window.My.models.download(repoId, targetDir, type);
 });
 
