@@ -11,6 +11,7 @@ export class LLMBridge {
     private scriptsDir: string,
     private modelPath: string,
     private python: string = "python",
+    private bridgeScript: string = "llm_bridge.py",
   ) {}
 
   isRunning() {
@@ -24,7 +25,7 @@ export class LLMBridge {
     onEvent: (msg: object) => void,
   ): Promise<{ ok: boolean; message?: string; error?: string }> {
     return new Promise((resolve) => {
-      const bridge = path.join(this.scriptsDir, "llm_bridge.py");
+      const bridge = path.join(this.scriptsDir, this.bridgeScript);
       this.proc = spawn(this.python, [bridge, this.modelPath], {
         stdio: ["pipe", "pipe", "pipe"],
         env: {

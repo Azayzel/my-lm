@@ -164,6 +164,11 @@ function runCommand(
   });
 }
 
+async function pythonModuleAvailable(moduleName: string): Promise<boolean> {
+  const result = await runCommand(PYTHON, ["-c", `import ${moduleName}`]);
+  return result.ok;
+}
+
 // ─── Window ───────────────────────────────────────────────────────────────────
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -231,7 +236,23 @@ ipcMain.on("window:close", () => mainWindow?.close());
 ipcMain.handle("llm:start", async (_e, modelPath: string) => {
   if (llmBridge?.isRunning()) return { ok: true, message: "Already running" };
   const mPath = modelPath ? resolveRepoPath(modelPath) : LLM_MODEL_DIR;
-  llmBridge = new LLMBridge(SCRIPTS_DIR, mPath, PYTHON);
+  const lowerName = path.basename(mPath).toLowerCase();
+  const bridgeScript = lowerName.endsWith(".gguf")
+    ? "gguf_bridge.py"
+    : "llm_bridge.py";
+
+  if (bridgeScript === "gguf_bridge.py") {
+    const hasLlamaCpp = await pythonModuleAvailable("llama_cpp");
+    if (!hasLlamaCpp) {
+      return {
+        ok: false,
+        error:
+          "GGUF runtime dependency missing. Install with: pip install llama-cpp-python",
+      };
+    }
+  }
+
+  llmBridge = new LLMBridge(SCRIPTS_DIR, mPath, PYTHON, bridgeScript);
   return llmBridge.start((msg) => {
     mainWindow?.webContents.send("llm:event", msg);
   });

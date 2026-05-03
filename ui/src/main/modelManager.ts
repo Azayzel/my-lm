@@ -47,7 +47,12 @@ export class ModelManager {
     const lower = fileName.toLowerCase();
     const ext = path.extname(lower);
 
-    if (ext === ".gguf") return "llm";
+    if (ext === ".gguf") {
+      if (lower.startsWith("mmproj") || lower.includes("projector")) {
+        return "unknown";
+      }
+      return "llm";
+    }
     if (lower.includes("adapter_model.")) return "adapter";
 
     return "unknown";
@@ -78,8 +83,6 @@ export class ModelManager {
     ) {
       return "image";
     }
-
-    if (this.hasAnyFileWithExt(fullPath, [".gguf"])) return "llm";
 
     // Hugging Face transformer folder patterns.
     if (
@@ -162,26 +165,26 @@ export class ModelManager {
       const entries = fs.readdirSync(dir, { withFileTypes: true });
       for (const entry of entries) {
         if (entry.isFile()) {
-          // Only include standalone top-level files (e.g. *.gguf) to avoid
-          // flooding with internal files from model directories.
-          if (depth === 0) {
-            const type = this.detectFileModelType(entry.name);
-            if (type !== "unknown") {
-              const fullPath = path.join(dir, entry.name);
-              const relName = path
-                .relative(this.modelsDir, fullPath)
-                .replace(/\\/g, "/");
-              const sizeGb = parseFloat(
-                (fs.statSync(fullPath).size / (1024 * 1024 * 1024)).toFixed(2),
-              );
-              out.push({
-                name: relName,
-                path: fullPath,
-                type,
-                exists: true,
-                sizeGb,
-              });
-            }
+          const type = this.detectFileModelType(entry.name);
+          // Include GGUF files at nested levels so selecting one routes to the
+          // GGUF runtime; keep other file-based model artifacts top-level only.
+          const includeFile =
+            type !== "unknown" && (depth === 0 || type === "llm");
+          if (includeFile) {
+            const fullPath = path.join(dir, entry.name);
+            const relName = path
+              .relative(this.modelsDir, fullPath)
+              .replace(/\\/g, "/");
+            const sizeGb = parseFloat(
+              (fs.statSync(fullPath).size / (1024 * 1024 * 1024)).toFixed(2),
+            );
+            out.push({
+              name: relName,
+              path: fullPath,
+              type,
+              exists: true,
+              sizeGb,
+            });
           }
           continue;
         }

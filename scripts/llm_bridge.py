@@ -217,6 +217,18 @@ def main():
 
     model_path = sys.argv[1]
 
+    if os.path.isfile(model_path):
+        emit(
+            {
+                "type": "error",
+                "message": (
+                    "Selected model path points to a file, but this LLM runtime expects "
+                    "a Hugging Face model directory (with config/tokenizer/weights)."
+                ),
+            }
+        )
+        sys.exit(1)
+
     if not os.path.isdir(model_path):
         emit({"type": "error", "message": f"Model path not found: {model_path}"})
         sys.exit(1)
