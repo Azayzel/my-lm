@@ -34,6 +34,15 @@ import platform
 import statistics
 import sys
 import time
+
+# Force UTF-8 stdout/stderr — Windows defaults to cp1252 which can't encode
+# the ✓/✗ status glyphs we print after each trial.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        try:
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any

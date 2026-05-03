@@ -26,6 +26,9 @@ const state = {
   // conversation history for current session
   messages: [] as { role: string; content: string }[],
   paths: null as AppPaths | null,
+  // model selection
+  selectedLlmModel: "", // path to selected LLM model
+  selectedImageModel: "", // path to selected Image model
 };
 
 // ─── DOM helpers ──────────────────────────────────────────────────────────────
@@ -203,10 +206,19 @@ window.My.onPaths((paths) => {
 const messagesEl = $("#messages");
 const chatInput = $<HTMLTextAreaElement>("#chat-input");
 const chatSendBtn = $<HTMLButtonElement>("#chat-send-btn");
+const chatAttachBtn = $<HTMLButtonElement>("#chat-attach-btn");
+const chatAttachPreview = $<HTMLDivElement>("#chat-attach-preview");
+const chatAttachThumb = $<HTMLImageElement>("#chat-attach-thumb");
+const chatAttachName = $<HTMLElement>("#chat-attach-name");
+const chatAttachClearBtn = $<HTMLButtonElement>("#chat-attach-clear");
+const chatVisionStatus = $<HTMLDivElement>("#chat-vision-status");
+const chatVisionDot = $<HTMLSpanElement>("#chat-vision-dot");
+const chatVisionText = $<HTMLSpanElement>("#chat-vision-text");
 const llmLoadBtn = $("#llm-load-btn");
 const llmStopBtn = $("#llm-stop-btn");
 const llmUnloadBtn = $("#llm-unload-btn");
 const llmDot = $("#llm-dot");
+const chatModelSelect = $<HTMLSelectElement>("#chat-model-select");
 
 // Range sliders
 function bindRange(inputId: string, valId: string, decimals = 0) {
@@ -238,19 +250,127 @@ function updateLLMUI() {
 
 updateLLMUI();
 
+// Chat sidebar model selector
+async function updateChatModelSelect() {
+  const models = await window.My.models.list();
+  const llmModels = models.filter((m) => m.type === "llm");
+  const prev = chatModelSelect.value;
+  chatModelSelect.innerHTML = '<option value="">-- Select a model --</option>';
+  llmModels.forEach((m) => {
+    const opt = document.createElement("option");
+    opt.value = m.path;
+    opt.textContent = `${m.name} (${(m.sizeGb || 0).toFixed(1)}GB)`;
+    chatModelSelect.appendChild(opt);
+  });
+  // Restore previous selection or sync from state
+  if (state.selectedLlmModel) chatModelSelect.value = state.selectedLlmModel;
+  else if (prev) chatModelSelect.value = prev;
+}
+
+chatModelSelect.addEventListener("change", () => {
+  state.selectedLlmModel = chatModelSelect.value;
+  // Sync the Models screen selector too
+  const modelsSelect = document.querySelector<HTMLSelectElement>(
+    "#model-selector-llm",
+  );
+  if (modelsSelect) modelsSelect.value = state.selectedLlmModel;
+});
+
+updateChatModelSelect();
+
 // Subscribe to LLM events
 let currentAssistantBubble: HTMLElement | null = null;
 let currentAssistantText = "";
+let chatAttachmentPath = "";
+let visionLastCaptionChars = 0;
+let visionLastModel = "";
+let visionLastError = "";
+
+type VisionUiState = "idle" | "ready" | "busy" | "error";
+
+function updateVisionTooltip(statusText: string) {
+  if (statusText.startsWith("Vision: basic mode")) {
+    chatVisionStatus.title = statusText;
+    return;
+  }
+  const parts: string[] = [statusText];
+  if (visionLastModel) parts.push(`Model: ${visionLastModel}`);
+  if (visionLastCaptionChars > 0) {
+    parts.push(`Last caption length: ${visionLastCaptionChars} chars`);
+  }
+  if (visionLastError) parts.push(`Last error: ${visionLastError}`);
+  chatVisionStatus.title = parts.join("\n");
+}
+
+function setVisionStatus(state: VisionUiState, message?: string) {
+  chatVisionStatus.classList.remove("ready", "busy", "error");
+  if (state !== "idle") chatVisionStatus.classList.add(state);
+
+  if (state === "ready") {
+    chatVisionDot.className = "dot on";
+  } else if (state === "busy") {
+    chatVisionDot.className = "dot loading";
+  } else if (state === "error") {
+    chatVisionDot.className = "dot";
+    (chatVisionDot as HTMLElement).style.background = "var(--danger)";
+  } else {
+    chatVisionDot.className = "dot";
+    (chatVisionDot as HTMLElement).style.background = "";
+  }
+
+  const statusText = message || "Vision: idle";
+  chatVisionText.textContent = statusText;
+  updateVisionTooltip(statusText);
+}
+
+setVisionStatus("idle", "Vision: idle");
+
+function basenameFromPath(p: string): string {
+  return p.replace(/\\/g, "/").split("/").pop() || p;
+}
+
+function setChatAttachment(path: string | null, preserveVisionStatus = false) {
+  if (!path) {
+    chatAttachmentPath = "";
+    chatAttachPreview.classList.remove("visible");
+    chatAttachThumb.src = "";
+    chatAttachName.textContent = "";
+    if (!preserveVisionStatus) setVisionStatus("idle", "Vision: idle");
+    return;
+  }
+  chatAttachmentPath = path;
+  chatAttachThumb.src = `file://${path}`;
+  chatAttachName.textContent = basenameFromPath(path);
+  chatAttachName.title = path;
+  chatAttachPreview.classList.add("visible");
+  setVisionStatus("idle", "Vision: image attached");
+}
+
+// Throttle live markdown rendering to ~60ms intervals to avoid excessive reflows.
+let markdownRenderTimer: ReturnType<typeof setTimeout> | null = null;
+function scheduleMarkdownRender() {
+  if (markdownRenderTimer) return;
+  markdownRenderTimer = setTimeout(() => {
+    markdownRenderTimer = null;
+    if (currentAssistantBubble) {
+      currentAssistantBubble.innerHTML = renderMarkdown(currentAssistantText);
+    }
+  }, 60);
+}
 
 window.My.llm.onEvent((msg: BridgeMsg) => {
-  if (msg.type === "status") {
+  if (msg.type === "status" || msg.type === "info") {
     showToast(msg["message"] as string, "info");
+  } else if (msg.type === "stderr") {
+    console.warn("[LLM stderr]", msg["text"]);
   } else if (msg.type === "ready") {
     state.llmReady = true;
     state.llmLoading = false;
     updateLLMUI();
     showToast("LLM model ready ✓", "success");
   } else if (msg.type === "token") {
+    // Ignore token streams from non-chat tools (Describe/Enhance/Books).
+    if (!state.streaming && !currentAssistantBubble) return;
     if (!currentAssistantBubble) {
       currentAssistantText = "";
       const msgEl = appendMessage("assistant", "");
@@ -258,10 +378,12 @@ window.My.llm.onEvent((msg: BridgeMsg) => {
       currentAssistantBubble.classList.add("typing-cursor");
     }
     currentAssistantText += msg.text ?? "";
-    // Show raw text while streaming (fast, no reflow jitter)
-    currentAssistantBubble.textContent = currentAssistantText;
+    // Render markdown live, throttled to avoid excessive reflows
+    scheduleMarkdownRender();
     messagesEl.scrollTop = messagesEl.scrollHeight;
   } else if (msg.type === "done") {
+    // Ignore done events from non-chat tool requests.
+    if (!state.streaming && !currentAssistantBubble) return;
     if (currentAssistantBubble) {
       currentAssistantBubble.classList.remove("typing-cursor");
       // Render final response as markdown
@@ -314,7 +436,9 @@ llmLoadBtn.addEventListener("click", async () => {
   if (state.llmLoading) return;
   state.llmLoading = true;
   updateLLMUI();
-  const res = await window.My.llm.start();
+  // Use selected model if available, otherwise let backend use default
+  const modelPath = state.selectedLlmModel || undefined;
+  const res = await window.My.llm.start(modelPath);
   if (!res.ok) {
     state.llmLoading = false;
     updateLLMUI();
@@ -346,16 +470,57 @@ llmUnloadBtn.addEventListener("click", async () => {
 
 async function sendChat() {
   const text = chatInput.value.trim();
-  if (!text || !state.llmReady || state.streaming) return;
+  if ((!text && !chatAttachmentPath) || !state.llmReady || state.streaming)
+    return;
 
   chatInput.value = "";
   chatInput.style.height = "";
 
-  appendMessage("user", text);
-  state.messages.push({ role: "user", content: text });
+  let userText = text;
+  if (chatAttachmentPath) {
+    const fileName = basenameFromPath(chatAttachmentPath);
+    setVisionStatus("busy", "Vision: analyzing image...");
+    showToast("Analyzing attached image…", "info");
+    const vision = await window.My.vision.describeImage(
+      chatAttachmentPath,
+      text || undefined,
+    );
+    if (vision.ok && vision.caption) {
+      const caption = vision.caption.trim();
+      visionLastCaptionChars = caption.length;
+      visionLastModel = vision.model || "caption model";
+      visionLastError = "";
+      const usingFallback = visionLastModel === "basic-vision-fallback";
+      userText = `${text || "Please analyze the attached image."}\n\n[Attached image: ${fileName}]\n[Image description]\n${caption}`;
+      const describeOut = document.querySelector<HTMLTextAreaElement>(
+        "#pb-describe-output",
+      );
+      if (describeOut) describeOut.value = caption;
+      setVisionStatus(
+        "ready",
+        usingFallback
+          ? `Vision: basic mode (${visionLastCaptionChars} chars)`
+          : `Vision: ready (${visionLastModel}, ${visionLastCaptionChars} chars)`,
+      );
+    } else {
+      visionLastError = vision.error || "unknown error";
+      userText = `${text || "Please analyze the attached image."}\n\n[Attached image: ${fileName}]`;
+      setVisionStatus("error", "Vision: description failed");
+      showToast(
+        `Image description unavailable: ${visionLastError}`,
+        "error",
+        7000,
+      );
+    }
+  }
+  userText = userText.trim();
+
+  appendMessage("user", userText);
+  state.messages.push({ role: "user", content: userText });
   state.streaming = true;
   currentAssistantBubble = null;
   updateLLMUI();
+  setChatAttachment(null, true);
 
   const request = {
     messages: state.messages,
@@ -374,6 +539,16 @@ async function sendChat() {
 }
 
 chatSendBtn.addEventListener("click", sendChat);
+
+chatAttachBtn.addEventListener("click", async () => {
+  const file = await window.My.dialog.openFile([
+    { name: "Images", extensions: ["png", "jpg", "jpeg", "webp", "bmp"] },
+  ]);
+  if (!file) return;
+  setChatAttachment(file);
+});
+
+chatAttachClearBtn.addEventListener("click", () => setChatAttachment(null));
 
 chatInput.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey) {
@@ -467,14 +642,33 @@ function buildPrompt(): string {
   const name = ($("#pb-name") as HTMLInputElement).value.trim();
   const position = ($("#pb-position") as HTMLTextAreaElement).value.trim();
   const weights = ($("#pb-weights") as HTMLTextAreaElement).value.trim();
-  return [head, name, position, weights].filter(Boolean).join(". ");
+  const positionWeight = parseFloat(
+    ($("#pb-position-weight") as HTMLInputElement).value,
+  );
+  const weightedPosition = position
+    ? positionWeight > 1
+      ? `(${position}:${positionWeight.toFixed(2)})`
+      : position
+    : "";
+  return [head, name, weightedPosition, weights].filter(Boolean).join(". ");
 }
 
 function updatePromptPreview() {
+  const posWeightInput = $("#pb-position-weight") as HTMLInputElement;
+  const posWeightVal = $("#pb-position-weight-val");
+  if (posWeightInput && posWeightVal) {
+    posWeightVal.textContent = parseFloat(posWeightInput.value).toFixed(2);
+  }
   $("#full-prompt-preview").textContent = buildPrompt();
 }
 
-["#pb-head", "#pb-name", "#pb-position", "#pb-weights"].forEach((id) => {
+[
+  "#pb-head",
+  "#pb-name",
+  "#pb-position",
+  "#pb-weights",
+  "#pb-position-weight",
+].forEach((id) => {
   $(id).addEventListener("input", updatePromptPreview);
 });
 updatePromptPreview();
@@ -647,7 +841,26 @@ const POSE_PRESETS = [
 
 const posePresetSelect = $<HTMLSelectElement>("#pb-position-preset");
 const poseAppendBtn = $<HTMLButtonElement>("#pb-position-append");
+const poseUndoBtn = $<HTMLButtonElement>("#pb-position-undo");
 const pbPosition = $<HTMLTextAreaElement>("#pb-position");
+const positionAppendUndoStack: string[] = [];
+
+function pushPositionUndoSnapshot() {
+  positionAppendUndoStack.push(pbPosition.value);
+  if (positionAppendUndoStack.length > 25) positionAppendUndoStack.shift();
+  poseUndoBtn.disabled = positionAppendUndoStack.length === 0;
+}
+
+function appendToPosition(text: string) {
+  const incoming = text.trim();
+  if (!incoming) return;
+  pushPositionUndoSnapshot();
+  const current = pbPosition.value.trim();
+  pbPosition.value = current
+    ? `${current}${current.endsWith(",") ? "" : ","} ${incoming}`
+    : incoming;
+  updatePromptPreview();
+}
 
 // Populate the dropdown
 POSE_PRESETS.forEach((p) => {
@@ -672,23 +885,235 @@ poseAppendBtn.addEventListener("click", () => {
     showToast("Pick a pose first", "info");
     return;
   }
-  const current = pbPosition.value.trim();
-  if (current) {
-    pbPosition.value = current + ", " + val;
-  } else {
-    pbPosition.value = val;
-  }
-  updatePromptPreview();
+  appendToPosition(val);
   // Reset dropdown so they can pick another
   posePresetSelect.value = "";
 });
 
+poseUndoBtn.addEventListener("click", () => {
+  const prev = positionAppendUndoStack.pop();
+  if (prev === undefined) return;
+  pbPosition.value = prev;
+  poseUndoBtn.disabled = positionAppendUndoStack.length === 0;
+  updatePromptPreview();
+  showToast("Reverted last append", "info");
+});
+
 // ── Enhance prompt via LLM ──────────────────────────────────────────────
 const enhanceBtn = $<HTMLButtonElement>("#enhance-prompt-btn");
+const describeBtn = $<HTMLButtonElement>("#describe-prompt-btn");
+const describeModeFull = $<HTMLInputElement>("#describe-mode-full");
+const describeModePosition = $<HTMLInputElement>("#describe-mode-position");
+const describeModePositionAppend = $<HTMLInputElement>(
+  "#describe-mode-position-append",
+);
+const pbDescribeOutput = $<HTMLTextAreaElement>("#pb-describe-output");
+const pbDescribeUsePositionBtn = $<HTMLButtonElement>(
+  "#pb-describe-use-position",
+);
+const pbDescribeUseWeightsBtn = $<HTMLButtonElement>(
+  "#pb-describe-use-weights",
+);
+
+function setDescribeOutput(text: string) {
+  pbDescribeOutput.value = text.trim();
+}
+
+pbDescribeUsePositionBtn.addEventListener("click", () => {
+  const t = pbDescribeOutput.value.trim();
+  if (!t) {
+    showToast("Describe Output is empty", "info");
+    return;
+  }
+  ($("#pb-position") as HTMLTextAreaElement).value = t;
+  updatePromptPreview();
+  showToast("Applied to Position", "success");
+});
+
+pbDescribeUseWeightsBtn.addEventListener("click", () => {
+  const t = pbDescribeOutput.value.trim();
+  if (!t) {
+    showToast("Describe Output is empty", "info");
+    return;
+  }
+  ($("#pb-weights") as HTMLTextAreaElement).value = t;
+  updatePromptPreview();
+  showToast("Applied to Weights", "success");
+});
+
+async function ensurePromptToolsLLMReady(): Promise<boolean> {
+  // Fast path when UI state is already accurate.
+  if (state.llmReady) return true;
+
+  try {
+    const status = await window.My.llm.status();
+    state.llmReady = !!status.ready;
+    state.llmLoading = !!status.running && !status.ready;
+    updateLLMUI();
+
+    if (status.ready) return true;
+    if (status.running && !status.ready) {
+      showToast("LLM is still loading. Please wait a moment.", "info");
+      return false;
+    }
+  } catch {
+    // Fall through to user-facing guidance.
+  }
+
+  showToast("Load the LLM model first (Chat panel → Load Model)", "error");
+  return false;
+}
+
+describeBtn.addEventListener("click", async () => {
+  if (!(await ensurePromptToolsLLMReady())) {
+    return;
+  }
+  if (state.streaming) {
+    showToast("LLM is busy. Wait for the current response to finish.", "info");
+    return;
+  }
+
+  const subject = ($("#pb-name") as HTMLInputElement).value.trim();
+  const position = ($("#pb-position") as HTMLTextAreaElement).value.trim();
+  const weights = ($("#pb-weights") as HTMLTextAreaElement).value.trim();
+  const describePositionOnly = describeModePosition.checked;
+  const appendPosition = describeModePositionAppend.checked;
+
+  if (!subject && !position && !weights) {
+    showToast("Fill in at least one prompt field first", "info");
+    return;
+  }
+
+  const raw = [subject, position, weights].filter(Boolean).join(". ");
+
+  describeBtn.disabled = true;
+  enhanceBtn.disabled = true;
+  describeBtn.textContent = "Describing…";
+
+  let result = "";
+  let finished = false;
+
+  const dispose = window.My.llm.onEvent((msg: BridgeMsg) => {
+    if (finished) return;
+    if (msg.type === "token") {
+      result += (msg["text"] || "") as string;
+    } else if (msg.type === "done") {
+      finished = true;
+      dispose();
+
+      let cleaned = result.trim();
+      cleaned = cleaned.replace(/^["'`]+|["'`]+$/g, "");
+      setDescribeOutput(cleaned);
+
+      if (describePositionOnly || appendPosition) {
+        const posEl = $("#pb-position") as HTMLTextAreaElement;
+        if (appendPosition) {
+          appendToPosition(cleaned);
+        } else {
+          posEl.value = cleaned;
+          updatePromptPreview();
+        }
+      } else {
+        const parts = cleaned.split(
+          /\.\s*(?=(?:soft|warm|dramatic|cinematic|natural|golden|studio|ambient|neon|moody|harsh|diffuse|rim|backlit|side|hard|subtle))/i,
+        );
+        if (parts.length >= 2) {
+          ($("#pb-position") as HTMLTextAreaElement).value = parts[0].trim();
+          ($("#pb-weights") as HTMLTextAreaElement).value = parts
+            .slice(1)
+            .join(". ")
+            .trim();
+        } else {
+          ($("#pb-position") as HTMLTextAreaElement).value = cleaned;
+        }
+      }
+      if (!describePositionOnly && !appendPosition) updatePromptPreview();
+      describeBtn.disabled = false;
+      enhanceBtn.disabled = false;
+      describeBtn.textContent = "📝 Describe";
+      showToast("Description applied ✓", "success");
+    } else if (msg.type === "error") {
+      finished = true;
+      dispose();
+      describeBtn.disabled = false;
+      enhanceBtn.disabled = false;
+      describeBtn.textContent = "📝 Describe";
+      showToast(
+        `Describe failed: ${msg["message"] || "unknown error"}`,
+        "error",
+        7000,
+      );
+    }
+  });
+
+  const systemPrompt =
+    describePositionOnly || appendPosition
+      ? "You are an expert visual pose describer for SDXL prompts. " +
+        "Given rough user text, produce ONE concise position/action description only. " +
+        "Output only plain text, no bullets, no quotes, no headings, under 45 words."
+      : "You are an expert Stable Diffusion XL prompt engineer. " +
+        "Given rough user text, write a concise visual description suitable for the Position/Action and style fields. " +
+        "Output only plain text, no bullets, no quotes, under 90 words.";
+
+  const describeReq = await window.My.llm.chat({
+    messages: [{ role: "user", content: raw }],
+    system: systemPrompt,
+    max_tokens: describePositionOnly || appendPosition ? 140 : 220,
+    temperature: 0.75,
+    top_p: 0.9,
+  });
+
+  if (!describeReq.ok) {
+    finished = true;
+    dispose();
+    describeBtn.disabled = false;
+    enhanceBtn.disabled = false;
+    describeBtn.textContent = "📝 Describe";
+    showToast(`Describe failed: ${describeReq.error}`, "error", 6000);
+    return;
+  }
+
+  setTimeout(() => {
+    if (!finished) {
+      finished = true;
+      dispose();
+      describeBtn.disabled = false;
+      enhanceBtn.disabled = false;
+      describeBtn.textContent = "📝 Describe";
+      if (result.trim()) {
+        const trimmed = result.trim();
+        setDescribeOutput(trimmed);
+        if (describePositionOnly || appendPosition) {
+          const posEl = $("#pb-position") as HTMLTextAreaElement;
+          const incoming = trimmed;
+          if (appendPosition) {
+            appendToPosition(incoming);
+          } else {
+            posEl.value = incoming;
+            updatePromptPreview();
+          }
+        } else {
+          ($("#pb-position") as HTMLTextAreaElement).value = result.trim();
+          updatePromptPreview();
+        }
+        showToast("Partial description applied", "info");
+      } else {
+        showToast(
+          "Describe timed out (model is taking too long). Try lower max tokens or click again.",
+          "error",
+          8000,
+        );
+      }
+    }
+  }, 180000);
+});
 
 enhanceBtn.addEventListener("click", async () => {
-  if (!state.llmReady) {
-    showToast("Load the LLM first (Chat screen → Load Model)", "error");
+  if (!(await ensurePromptToolsLLMReady())) {
+    return;
+  }
+  if (state.streaming) {
+    showToast("LLM is busy. Wait for the current response to finish.", "info");
     return;
   }
 
@@ -722,6 +1147,7 @@ enhanceBtn.addEventListener("click", async () => {
       // Strip any wrapping quotes/backticks the LLM might add.
       let cleaned = result.trim();
       cleaned = cleaned.replace(/^["'`]+|["'`]+$/g, "");
+      setDescribeOutput(cleaned);
 
       // Split into position/action + style/lighting if the LLM gave us
       // two clear sections, otherwise put everything into position.
@@ -746,7 +1172,11 @@ enhanceBtn.addEventListener("click", async () => {
       dispose();
       enhanceBtn.disabled = false;
       enhanceBtn.textContent = "✨ Enhance";
-      showToast("Enhance failed — check LLM", "error");
+      showToast(
+        `Enhance failed: ${msg["message"] || "unknown error"}`,
+        "error",
+        7000,
+      );
     }
   });
 
@@ -759,7 +1189,7 @@ enhanceBtn.addEventListener("click", async () => {
     "Output ONLY the improved prompt — no explanation, no headings, " +
     "no bullet points, no quotes. Keep it under 120 words.";
 
-  await window.My.llm.chat({
+  const enhanceReq = await window.My.llm.chat({
     messages: [
       { role: "system", content: systemPrompt },
       { role: "user", content: raw },
@@ -767,6 +1197,15 @@ enhanceBtn.addEventListener("click", async () => {
     max_tokens: 300,
     temperature: 0.8,
   });
+
+  if (!enhanceReq.ok) {
+    finished = true;
+    dispose();
+    enhanceBtn.disabled = false;
+    enhanceBtn.textContent = "✨ Enhance";
+    showToast(`Enhance failed: ${enhanceReq.error}`, "error", 6000);
+    return;
+  }
 
   // Timeout: if the LLM never fires "done" within 30s, give up
   setTimeout(() => {
@@ -776,14 +1215,20 @@ enhanceBtn.addEventListener("click", async () => {
       enhanceBtn.disabled = false;
       enhanceBtn.textContent = "✨ Enhance";
       if (result) {
-        ($("#pb-position") as HTMLTextAreaElement).value = result.trim();
+        const trimmed = result.trim();
+        setDescribeOutput(trimmed);
+        ($("#pb-position") as HTMLTextAreaElement).value = trimmed;
         updatePromptPreview();
         showToast("Partial enhance applied", "info");
       } else {
-        showToast("Enhance timed out", "error");
+        showToast(
+          "Enhance timed out (model is taking too long). Try lower max tokens or click again.",
+          "error",
+          8000,
+        );
       }
     }
-  }, 30000);
+  }, 180000);
 });
 
 // Range sliders for image
@@ -895,7 +1340,9 @@ imgLoadBtn.addEventListener("click", async () => {
   if (state.imageLoading) return;
   state.imageLoading = true;
   updateImageUI();
-  const res = await window.My.image.start();
+  // Use selected model if available, otherwise let backend use default
+  const modelPath = state.selectedImageModel || undefined;
+  const res = await window.My.image.start(modelPath);
   if (!res.ok) {
     state.imageLoading = false;
     updateImageUI();
@@ -936,6 +1383,35 @@ generateStopBtn.addEventListener("click", async () => {
   showToast("Generation stopped", "info");
 });
 
+// ─── Ribbon Tab Switching ─────────────────────────────────────────────────
+document.querySelectorAll<HTMLElement>(".ribbon-tab").forEach((tab) => {
+  tab.addEventListener("click", () => {
+    const tabName = tab.dataset.tab;
+    if (!tabName) return;
+
+    // Hide all content
+    document
+      .querySelectorAll<HTMLElement>(".ribbon-content")
+      .forEach((c) => (c.style.display = "none"));
+
+    // Deactivate all tabs
+    document.querySelectorAll<HTMLElement>(".ribbon-tab").forEach((t) => {
+      t.style.borderBottomColor = "transparent";
+      t.style.color = "var(--text2)";
+    });
+
+    // Show selected content
+    const content = document.querySelector<HTMLElement>(
+      `.ribbon-content[data-tab="${tabName}"]`,
+    );
+    if (content) content.style.display = "block";
+
+    // Activate selected tab
+    tab.style.borderBottomColor = "var(--accent)";
+    tab.style.color = "var(--text1)";
+  });
+});
+
 generateBtn.addEventListener("click", async () => {
   if (!state.imageReady || state.generating) return;
   state.generating = true;
@@ -961,6 +1437,7 @@ generateBtn.addEventListener("click", async () => {
       ($("#img-face-fix-strength") as HTMLInputElement).value,
     ),
     face_swap: doFaceSwap,
+    nsfw_seg: ($("#img-nsfw-seg") as HTMLInputElement).checked,
   };
   if (doFaceSwap && faceSwapSourcePath) {
     request.face_swap_source = faceSwapSourcePath;
@@ -992,6 +1469,50 @@ genImage.addEventListener("click", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 let mediaCurrentDir = ""; // "" = outputs root
+let mediaRenderToken = 0;
+const MEDIA_RENDER_BATCH_SIZE = 48;
+const MEDIA_PLACEHOLDER_DATA_URL =
+  "data:image/gif;base64,R0lGODlhAQABAAAAACwAAAAAAQABAAA=";
+const thumbnailRequestCache = new Map<string, Promise<string>>();
+
+let mediaThumbObserver: IntersectionObserver | null = null;
+
+function ensureMediaThumbObserver() {
+  if (mediaThumbObserver) return mediaThumbObserver;
+  mediaThumbObserver = new IntersectionObserver(
+    (entries) => {
+      entries.forEach((entry) => {
+        if (!entry.isIntersecting) return;
+        const img = entry.target as HTMLImageElement;
+        const fullPath = img.dataset.fullPath;
+        if (!fullPath) return;
+        mediaThumbObserver?.unobserve(img);
+        void loadMediaThumbnail(img, fullPath);
+      });
+    },
+    { rootMargin: "600px 0px" },
+  );
+  return mediaThumbObserver;
+}
+
+async function loadMediaThumbnail(img: HTMLImageElement, fullPath: string) {
+  try {
+    let pending = thumbnailRequestCache.get(fullPath);
+    if (!pending) {
+      pending = window.My.media
+        .getThumbnail(fullPath, 360)
+        .then((res) => {
+          if (res.ok && res.path) return `file://${res.path}`;
+          return `file://${fullPath}`;
+        })
+        .catch(() => `file://${fullPath}`);
+      thumbnailRequestCache.set(fullPath, pending);
+    }
+    img.src = await pending;
+  } catch {
+    img.src = `file://${fullPath}`;
+  }
+}
 
 function renderMediaBreadcrumb() {
   const bc = $("#media-breadcrumb");
@@ -1022,12 +1543,14 @@ function renderMediaBreadcrumb() {
 }
 
 async function loadMediaGrid() {
+  const renderToken = ++mediaRenderToken;
   const grid = $("#media-grid");
   grid.innerHTML =
     '<div class="empty-state"><div class="es-icon">⏳</div><p>Loading…</p></div>';
   renderMediaBreadcrumb();
 
   const listing = await window.My.media.list(mediaCurrentDir || undefined);
+  if (renderToken !== mediaRenderToken) return;
   const { folders, files } = listing;
 
   if (!folders.length && !files.length) {
@@ -1084,12 +1607,16 @@ async function loadMediaGrid() {
   // Collect folder names for the "move to" menu
   const folderNames = folders.map((f) => f.rel);
 
-  // Render image files
-  files.forEach((f) => {
-    const card = document.createElement("div");
-    card.className = "media-card";
-    card.innerHTML = `
-      <img src="file://${f.path}" loading="lazy" alt="${f.name}" />
+  // Render image files in batches so large folders stay responsive.
+  for (let i = 0; i < files.length; i += MEDIA_RENDER_BATCH_SIZE) {
+    if (renderToken !== mediaRenderToken) return;
+    const batch = files.slice(i, i + MEDIA_RENDER_BATCH_SIZE);
+    const frag = document.createDocumentFragment();
+    batch.forEach((f) => {
+      const card = document.createElement("div");
+      card.className = "media-card";
+      card.innerHTML = `
+      <img src="${MEDIA_PLACEHOLDER_DATA_URL}" loading="lazy" decoding="async" alt="${f.name}" />
       <div class="media-card-info">
         <div class="media-card-name" title="${f.name}">${f.name}</div>
       </div>
@@ -1099,50 +1626,55 @@ async function loadMediaGrid() {
         <button title="Delete" class="mc-del">🗑</button>
       </div>
     `;
-    card
-      .querySelector("img")!
-      .addEventListener("click", () =>
+      const imgEl = card.querySelector("img") as HTMLImageElement;
+      imgEl.dataset.fullPath = f.path;
+      ensureMediaThumbObserver().observe(imgEl);
+      imgEl.addEventListener("click", () =>
         openLightbox(`file://${f.path}`, f.path),
       );
-    card.querySelector(".mc-open")!.addEventListener("click", (e) => {
-      e.stopPropagation();
-      window.My.media.open(f.path);
-    });
-    card.querySelector(".mc-move")!.addEventListener("click", async (e) => {
-      e.stopPropagation();
-      // Build a list of available destinations: parent ("outputs root") + sibling folders
-      const destinations = ["(root)"];
-      if (mediaCurrentDir) destinations.push("(root)");
-      folderNames.forEach((fn) => destinations.push(fn));
+      card.querySelector(".mc-open")!.addEventListener("click", (e) => {
+        e.stopPropagation();
+        window.My.media.open(f.path);
+      });
+      card.querySelector(".mc-move")!.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        // Build a list of available destinations: parent ("outputs root") + sibling folders
+        const destinations = ["(root)"];
+        if (mediaCurrentDir) destinations.push("(root)");
+        folderNames.forEach((fn) => destinations.push(fn));
 
-      const dest = await askInput(
-        "Move to folder",
-        `Move "${f.name}" to which folder? Type a folder name (existing or new).`,
-        "e.g. favorites",
-        folderNames[0] || "",
-      );
-      if (!dest) return;
-      const targetFolder = dest === "(root)" ? "" : dest;
-      const res = await window.My.media.move(f.path, targetFolder);
-      if (res.ok) {
-        card.remove();
-        showToast(`Moved to ${targetFolder || "root"}`, "success");
-      } else {
-        showToast(`Move failed: ${res.error}`, "error");
-      }
+        const dest = await askInput(
+          "Move to folder",
+          `Move "${f.name}" to which folder? Type a folder name (existing or new).`,
+          "e.g. favorites",
+          folderNames[0] || "",
+        );
+        if (!dest) return;
+        const targetFolder = dest === "(root)" ? "" : dest;
+        const res = await window.My.media.move(f.path, targetFolder);
+        if (res.ok) {
+          card.remove();
+          showToast(`Moved to ${targetFolder || "root"}`, "success");
+        } else {
+          showToast(`Move failed: ${res.error}`, "error");
+        }
+      });
+      card.querySelector(".mc-del")!.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        const ok = await askConfirm("Delete image?", f.name);
+        if (!ok) return;
+        const res = await window.My.media.delete(f.path);
+        if (res.ok) {
+          card.remove();
+          showToast("Deleted", "success");
+        } else showToast(`Error: ${res.error}`, "error");
+      });
+      frag.appendChild(card);
     });
-    card.querySelector(".mc-del")!.addEventListener("click", async (e) => {
-      e.stopPropagation();
-      const ok = await askConfirm("Delete image?", f.name);
-      if (!ok) return;
-      const res = await window.My.media.delete(f.path);
-      if (res.ok) {
-        card.remove();
-        showToast("Deleted", "success");
-      } else showToast(`Error: ${res.error}`, "error");
-    });
-    grid.appendChild(card);
-  });
+    grid.appendChild(frag);
+    // Yield to the browser so input/scroll stays smooth while rendering many cards.
+    await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+  }
 }
 
 $("#media-refresh-btn").addEventListener("click", loadMediaGrid);
@@ -1200,6 +1732,7 @@ const TYPE_ICONS: Record<string, string> = {
   llm: "🧠",
   image: "🎨",
   upscaler: "🔬",
+  adapter: "🧬",
   unknown: "📦",
 };
 
@@ -1207,29 +1740,148 @@ async function loadModelsList() {
   const list = $("#models-list");
   list.innerHTML = "";
   const models = await window.My.models.list();
+
   if (!models.length) {
     list.innerHTML =
-      '<div style="color:var(--text3);font-size:13px;">No models found in models/ directory.</div>';
+      '<div style="color:var(--text3);font-size:13px;padding:24px;text-align:center;"><div style="font-size:24px;margin-bottom:8px">📭</div><div>No models found in models/ directory.</div></div>';
     return;
   }
+
+  // Group models by type
+  const grouped: Record<string, typeof models> = {};
   models.forEach((m) => {
-    const card = document.createElement("div");
-    card.className = "model-card";
-    card.innerHTML = `
-      <div class="model-card-icon">${TYPE_ICONS[m.type] ?? "📦"}</div>
-      <div class="model-card-info">
-        <div class="mc-name">${m.name}</div>
-        <div class="mc-path">${m.path}</div>
-        <span class="mc-type">${m.type}</span>
-      </div>
-    `;
-    list.appendChild(card);
+    if (!grouped[m.type]) grouped[m.type] = [];
+    grouped[m.type].push(m);
   });
+
+  const typeOrder = ["llm", "image", "upscaler", "adapter", "unknown"];
+  const sortedTypes = Object.keys(grouped).sort(
+    (a, b) => typeOrder.indexOf(a) - typeOrder.indexOf(b),
+  );
+
+  // Build explorer view
+  let html = "";
+  sortedTypes.forEach((type, typeIdx) => {
+    const icon = TYPE_ICONS[type] ?? "📦";
+    const typeLabel = type.charAt(0).toUpperCase() + type.slice(1);
+    const isOpen = typeIdx === 0; // First group open
+
+    html += `
+    <div style="border-bottom: 1px solid var(--border)">
+      <div class="model-group-header" data-type="${type}" style="display:flex;align-items:center;gap:8px;padding:12px 16px;background:var(--bg1);cursor:pointer;user-select:none;transition:background 0.2s">
+        <span class="group-toggle" style="display:inline-block;width:20px;text-align:center;transform:${isOpen ? "rotate(0)" : "rotate(-90)"}deg;transition:transform 0.2s">▼</span>
+        <span style="font-size:16px">${icon}</span>
+        <span style="font-weight:600;font-size:13px;color:var(--text1);flex:1">${typeLabel}</span>
+        <span style="font-size:11px;color:var(--text3);background:var(--bg2);padding:2px 6px;border-radius:3px">${grouped[type].length}</span>
+      </div>
+      <div class="model-group-content" style="display:${isOpen ? "block" : "none"}">
+        ${grouped[type]
+          .map(
+            (m, idx) => `
+          <div style="padding:12px 16px;border-bottom:${idx < grouped[type].length - 1 ? "1px solid var(--border)" : "none"};display:flex;align-items:center;gap:12px;background:var(--bg2);transition:background 0.2s;hover:background var(--bg1)" onmouseover="this.style.background='var(--bg1)'" onmouseout="this.style.background='var(--bg2)'">
+            <span style="font-size:14px">${icon}</span>
+            <div style="flex:1;min-width:0">
+              <div style="font-weight:500;font-size:12px;color:var(--text1);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${m.name}</div>
+              <div style="font-size:10px;color:var(--text3);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:monospace">${m.path}</div>
+              <div style="font-size:9px;color:var(--text3);margin-top:4px">${(m.sizeGb || 0).toFixed(1)} GB</div>
+            </div>
+            <button class="btn btn-sm btn-ghost model-quick-select" data-type="${type}" data-path="${m.path}" style="white-space:nowrap">
+              Select
+            </button>
+          </div>
+        `,
+          )
+          .join("")}
+      </div>
+    </div>
+    `;
+  });
+
+  list.innerHTML = html;
+
+  // Attach group toggle listeners
+  list
+    .querySelectorAll<HTMLElement>(".model-group-header")
+    .forEach((header) => {
+      header.addEventListener("click", () => {
+        const content = header.nextElementSibling as HTMLElement;
+        const toggle = header.querySelector<HTMLElement>(".group-toggle")!;
+        const isOpen = content.style.display !== "none";
+        content.style.display = isOpen ? "none" : "block";
+        toggle.style.transform = isOpen ? "rotate(-90deg)" : "rotate(0)";
+      });
+    });
+
+  // Attach quick-select listeners
+  list
+    .querySelectorAll<HTMLButtonElement>(".model-quick-select")
+    .forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const type = btn.dataset.type!;
+        const path = btn.dataset.path!;
+        if (type === "llm") {
+          const select = $<HTMLSelectElement>("#model-selector-llm");
+          select.value = path;
+          ($("#model-set-llm-btn") as HTMLElement).click();
+        } else if (type === "image") {
+          const select = $<HTMLSelectElement>("#model-selector-image");
+          select.value = path;
+          ($("#model-set-image-btn") as HTMLElement).click();
+        }
+      });
+    });
+
+  // Also update model selectors
+  await updateModelSelectors();
+}
+
+async function updateModelSelectors() {
+  const models = await window.My.models.list();
+  const llmSelect = $<HTMLSelectElement>("#model-selector-llm");
+  const imageSelect = $<HTMLSelectElement>("#model-selector-image");
+
+  // Group by type
+  const llmModels = models.filter((m) => m.type === "llm");
+  const imageModels = models.filter((m) => m.type === "image");
+
+  // Populate LLM selector
+  llmSelect.innerHTML = '<option value="">-- Select an LLM model --</option>';
+  llmModels.forEach((m) => {
+    const opt = document.createElement("option");
+    opt.value = m.path;
+    opt.textContent = `${m.name} (${(m.sizeGb || 0).toFixed(1)}GB)`;
+    llmSelect.appendChild(opt);
+  });
+
+  // Populate Image selector
+  imageSelect.innerHTML =
+    '<option value="">-- Select an image model --</option>';
+  imageModels.forEach((m) => {
+    const opt = document.createElement("option");
+    opt.value = m.path;
+    opt.textContent = `${m.name} (${(m.sizeGb || 0).toFixed(1)}GB)`;
+    imageSelect.appendChild(opt);
+  });
+
+  // Keep chat sidebar dropdown in sync
+  await updateChatModelSelect();
 }
 
 // Download
 const dlLog = $<HTMLDivElement>("#download-log");
 const diagnosticsLog = $<HTMLDivElement>("#diagnostics-log");
+
+// Models refresh button
+$("#models-refresh-btn").addEventListener("click", async () => {
+  const btn = $("#models-refresh-btn") as HTMLButtonElement;
+  const originalText = btn.textContent;
+  btn.textContent = "⟳ Loading…";
+  btn.disabled = true;
+  await loadModelsList();
+  btn.textContent = originalText;
+  btn.disabled = false;
+  showToast("Models refreshed ✓", "success");
+});
 
 function logDownload(text: string) {
   dlLog.style.display = "block";
@@ -1295,6 +1947,7 @@ const CAT_LABEL: Record<CatalogEntry["category"], string> = {
   image: "Image",
   upscaler: "Upscaler",
   face: "Face",
+  nsfw: "NSFW",
   vae: "VAE",
 };
 
@@ -1352,12 +2005,7 @@ function renderCatalog() {
       if (e.installed) return;
       btn.disabled = true;
       btn.textContent = "Downloading…";
-      const type =
-        e.category === "llm"
-          ? "llm"
-          : e.category === "image"
-            ? "image"
-            : "other";
+      const type = e.category === "image" ? "image" : "llm";
       logDownload(
         `▶ Installing ${e.name} (${e.repoId}) → models/${e.targetDir}`,
       );
@@ -1410,12 +2058,13 @@ $("#dl-start-btn").addEventListener("click", async () => {
   const repoId = ($("#dl-repo-id") as HTMLInputElement).value.trim();
   const targetDir = ($("#dl-target-dir") as HTMLInputElement).value.trim();
   const type = ($("#dl-type") as HTMLSelectElement).value;
-  if (!repoId || !targetDir) {
-    showToast("Please fill in repo ID and target folder", "error");
+  if (!repoId) {
+    showToast("Please fill in repo ID", "error");
     return;
   }
   dlLog.textContent = "";
-  logDownload(`Starting download: ${repoId} → ${targetDir}`);
+  const targetLabel = targetDir || "models/<auto-from-repo>";
+  logDownload(`Starting download: ${repoId} → ${targetLabel}`);
   await window.My.models.download(repoId, targetDir, type);
 });
 
@@ -1446,12 +2095,46 @@ $("#run-diagnostics-btn").addEventListener("click", async () => {
   showToast("Diagnostics complete ✓", "success");
 });
 
+// ─── Model Selector Buttons ────────────────────────────────────────────────────
+
+$("#model-set-llm-btn").addEventListener("click", async () => {
+  const select = $<HTMLSelectElement>("#model-selector-llm");
+  const modelPath = select.value;
+  if (!modelPath) {
+    showToast("Please select a model first", "error");
+    return;
+  }
+  state.selectedLlmModel = modelPath;
+  chatModelSelect.value = modelPath;
+  const infoEl = $<HTMLElement>("#model-info-llm");
+  const modelName = select.options[select.selectedIndex]?.text || modelPath;
+  infoEl.textContent = `Current: ${modelName}`;
+  showToast(`LLM model set to: ${modelName}`, "success");
+});
+
+$("#model-set-image-btn").addEventListener("click", async () => {
+  const select = $<HTMLSelectElement>("#model-selector-image");
+  const modelPath = select.value;
+  if (!modelPath) {
+    showToast("Please select a model first", "error");
+    return;
+  }
+  state.selectedImageModel = modelPath;
+  const infoEl = $<HTMLElement>("#model-info-image");
+  const modelName = select.options[select.selectedIndex]?.text || modelPath;
+  infoEl.textContent = `Current: ${modelName}`;
+  showToast(`Image model set to: ${modelName}`, "success");
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // GPU SCREEN
 // ─────────────────────────────────────────────────────────────────────────────
 
 const gpuContent = $<HTMLDivElement>("#gpu-content");
 const gpuRaw = $<HTMLDivElement>("#gpu-raw");
+const gpuClearThumbCacheBtn = $<HTMLButtonElement>(
+  "#gpu-clear-thumb-cache-btn",
+);
 
 async function loadGpuInfo() {
   gpuContent.innerHTML =
@@ -1514,6 +2197,450 @@ async function loadGpuInfo() {
 
 $("#gpu-refresh-btn").addEventListener("click", loadGpuInfo);
 
+gpuClearThumbCacheBtn.addEventListener("click", async () => {
+  gpuClearThumbCacheBtn.disabled = true;
+  try {
+    const res = await window.My.system.clearThumbnailCache();
+    if (!res.ok) {
+      showToast(
+        `Failed to clear thumbnail cache: ${res.error ?? "unknown"}`,
+        "error",
+        5000,
+      );
+      return;
+    }
+
+    thumbnailRequestCache.clear();
+
+    const mb = ((res.removedBytes ?? 0) / (1024 * 1024)).toFixed(2);
+    showToast(
+      `Thumbnail cache cleared (${res.removedFiles ?? 0} files, ${mb} MB)`,
+      "success",
+    );
+    gpuRaw.textContent = JSON.stringify(
+      {
+        thumbnailCache: {
+          cleared: true,
+          removedFiles: res.removedFiles ?? 0,
+          removedBytes: res.removedBytes ?? 0,
+        },
+      },
+      null,
+      2,
+    );
+  } finally {
+    gpuClearThumbCacheBtn.disabled = false;
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BENCHMARK (lives on the GPU screen)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const benchState = {
+  running: false,
+  totalTrials: 0,
+  doneTrials: 0,
+};
+
+const benchLog = $<HTMLElement>("#bench-log");
+const benchBar = $<HTMLElement>("#bench-bar");
+const benchStartBtn = $<HTMLButtonElement>("#bench-start-btn");
+const benchStopBtn = $<HTMLButtonElement>("#bench-stop-btn");
+const benchClearLogBtn = $<HTMLButtonElement>("#bench-clear-log-btn");
+const benchStatusBadge = $<HTMLElement>("#bench-status-badge");
+const benchRefreshResultsBtn = $<HTMLButtonElement>(
+  "#bench-refresh-results-btn",
+);
+const benchOpenResultsDirBtn = $<HTMLButtonElement>(
+  "#bench-open-results-dir-btn",
+);
+const benchResultsList = $<HTMLElement>("#bench-results-list");
+const benchResultsDirBadge = $<HTMLElement>("#bench-results-dir-badge");
+const benchResultDetail = $<HTMLElement>("#bench-result-detail");
+
+function benchLogLine(text: string, cls: "" | "ok" | "err" = "") {
+  const line = document.createElement("div");
+  if (cls) line.className = cls;
+  line.textContent = text;
+  benchLog.appendChild(line);
+  benchLog.scrollTop = benchLog.scrollHeight;
+}
+
+function setBenchRunning(running: boolean) {
+  benchState.running = running;
+  benchStartBtn.disabled = running;
+  benchStopBtn.disabled = !running;
+  benchStartBtn.textContent = running ? "Running…" : "▶ Start Benchmark";
+  benchStatusBadge.textContent = running ? "Running…" : "Idle";
+}
+
+function readBenchConfig(): BenchmarkConfig {
+  const v = (id: string) => ($(`#${id}`) as HTMLInputElement).value.trim();
+  const trialsRaw = parseInt(v("bench-trials"), 10);
+  return {
+    models: v("bench-models"),
+    tasks: v("bench-tasks"),
+    conditions: v("bench-conditions") || "raw,autotune",
+    trials: Number.isFinite(trialsRaw) && trialsRaw > 0 ? trialsRaw : 2,
+    output: v("bench-output") || undefined,
+    dryRun: ($("#bench-dry-run") as HTMLInputElement).checked,
+  };
+}
+
+function estimateTotalTrials(cfg: BenchmarkConfig): number {
+  const count = (s: string) =>
+    s
+      .split(",")
+      .map((t) => t.trim())
+      .filter(Boolean).length;
+  const models = Math.max(1, count(cfg.models));
+  // tasks blank => "all" — script currently has 2 tasks (code_debugger, research_synth)
+  const tasks = cfg.tasks ? Math.max(1, count(cfg.tasks)) : 2;
+  const conditions = Math.max(1, count(cfg.conditions));
+  return models * tasks * conditions * Math.max(1, cfg.trials);
+}
+
+benchStartBtn.addEventListener("click", async () => {
+  const cfg = readBenchConfig();
+  if (!cfg.models) {
+    showToast("Please specify at least one model", "error");
+    return;
+  }
+  benchLog.innerHTML = "";
+  benchBar.style.width = "0%";
+  benchState.totalTrials = estimateTotalTrials(cfg);
+  benchState.doneTrials = 0;
+  benchLogLine(`Starting benchmark with config:`);
+  benchLogLine(JSON.stringify(cfg, null, 2));
+  benchLogLine(`Estimated trials: ${benchState.totalTrials}`);
+
+  setBenchRunning(true);
+  const res = await window.My.bench.start(cfg);
+  if (!res.ok) {
+    benchLogLine(`✗ Failed to start: ${res.error}`, "err");
+    showToast(`Benchmark failed to start: ${res.error}`, "error", 6000);
+    setBenchRunning(false);
+  }
+});
+
+benchStopBtn.addEventListener("click", async () => {
+  await window.My.bench.stop();
+  benchLogLine("■ Benchmark stopped by user", "err");
+  setBenchRunning(false);
+});
+
+benchClearLogBtn.addEventListener("click", () => {
+  benchLog.innerHTML = "";
+});
+
+window.My.bench.onEvent((msg: BridgeMsg) => {
+  switch (msg.type) {
+    case "status":
+      benchLogLine(`ℹ ${msg["message"]}`);
+      break;
+    case "log": {
+      const text = String(msg["text"] ?? "");
+      benchLogLine(text);
+      // Heuristic: count completed trials based on the script's
+      // "✓ ... turns, ...s" / "✗ ..." per-trial output line.
+      if (
+        /^\s*[✓✗]\s+\d+\s+turns/.test(text) ||
+        /\b\d+\s+turns,\s/.test(text)
+      ) {
+        benchState.doneTrials += 1;
+        if (benchState.totalTrials > 0) {
+          const pct = Math.min(
+            100,
+            (benchState.doneTrials / benchState.totalTrials) * 100,
+          );
+          benchBar.style.width = `${pct.toFixed(1)}%`;
+        }
+      }
+      if (/^Results written to /.test(text)) {
+        // Refresh history when results land.
+        refreshBenchResults();
+      }
+      break;
+    }
+    case "stderr": {
+      const t = String(msg["text"] ?? "");
+      if (
+        t &&
+        !t.includes("FutureWarning") &&
+        !t.includes("UserWarning") &&
+        !t.includes("warnings.warn")
+      ) {
+        benchLogLine(t);
+      }
+      break;
+    }
+    case "error":
+      benchLogLine(`✗ ${msg["message"]}`, "err");
+      showToast(`Benchmark error: ${msg["message"]}`, "error", 6000);
+      setBenchRunning(false);
+      break;
+    case "exit":
+      if (msg["code"] === 0) {
+        benchLogLine(`✓ Benchmark complete (exit 0)`, "ok");
+        benchBar.style.width = "100%";
+        showToast("Benchmark complete ✓", "success");
+        refreshBenchResults();
+      } else {
+        benchLogLine(`Process exited with code ${msg["code"]}`, "err");
+      }
+      setBenchRunning(false);
+      break;
+  }
+});
+
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function formatDate(ms: number): string {
+  try {
+    return new Date(ms).toLocaleString();
+  } catch {
+    return String(ms);
+  }
+}
+
+async function refreshBenchResults() {
+  const res = await window.My.bench.listResults();
+  benchResultsDirBadge.textContent = res.dir;
+  benchResultsDirBadge.title = res.dir;
+  if (!res.ok) {
+    benchResultsList.innerHTML = `<div class="empty-state" style="padding: 12px"><p>Failed to list results: ${res.error ?? "unknown error"}</p></div>`;
+    return;
+  }
+  if (!res.files.length) {
+    benchResultsList.innerHTML = `<div class="empty-state" style="padding: 12px"><p>No benchmarks yet. Run one to see results here.</p></div>`;
+    return;
+  }
+  benchResultsList.innerHTML = "";
+  for (const f of res.files) {
+    const row = document.createElement("div");
+    row.className = "bench-result-row";
+    row.innerHTML = `
+      <div>
+        <div>${f.name}</div>
+        <div class="br-meta">${formatDate(f.mtime)} · ${formatBytes(f.size)}</div>
+      </div>
+      <div class="br-actions">
+        <button class="btn btn-ghost btn-sm" data-act="view">View</button>
+      </div>
+    `;
+    const viewBtn = row.querySelector<HTMLButtonElement>('[data-act="view"]')!;
+    viewBtn.addEventListener("click", () => viewBenchResult(f.path));
+    benchResultsList.appendChild(row);
+  }
+}
+
+async function viewBenchResult(filePath: string) {
+  const res = await window.My.bench.getResult(filePath);
+  if (!res.ok) {
+    showToast(`Failed to read result: ${res.error}`, "error", 6000);
+    return;
+  }
+  benchResultDetail.textContent = JSON.stringify(res.data, null, 2);
+  benchResultDetail.classList.add("visible");
+  benchResultDetail.scrollTop = 0;
+  renderBenchCharts(res.data);
+}
+
+interface BenchSummary {
+  task: string;
+  model: string;
+  condition: string;
+  n_trials: number;
+  avg_ttft_ms: number;
+  ttft_slope_ms_per_turn: number;
+  avg_model_reloads: number;
+  avg_wall_s: number;
+  avg_peak_ram_gb: number;
+  total_swap_events: number;
+  tool_call_errors: number;
+  success_rate: number;
+  avg_context_tokens_final: number;
+}
+interface BenchTrial {
+  task_success: boolean;
+  error?: string;
+}
+interface BenchData {
+  meta?: { models?: string[]; tasks?: string[]; conditions?: string[] };
+  trials?: BenchTrial[];
+  summaries?: BenchSummary[];
+}
+
+const benchChartsEl = $<HTMLElement>("#bench-charts");
+
+function renderBenchCharts(data: BenchData) {
+  benchChartsEl.innerHTML = "";
+  benchChartsEl.classList.add("visible");
+
+  const summaries = data.summaries ?? [];
+  if (!summaries.length) {
+    benchChartsEl.innerHTML = `<div class="bench-chart"><h4>Charts</h4><div class="bc-empty">No summaries in this result file.</div></div>`;
+    return;
+  }
+
+  const allErrored = (data.trials ?? []).every((t) => !t.task_success);
+  const errBanner = allErrored
+    ? `<div class="bc-empty" style="color: var(--danger); margin-bottom: 6px;">All trials failed — metrics shown are from error paths only.</div>`
+    : "";
+
+  benchChartsEl.appendChild(
+    chartBlock(
+      "Avg wall time (s) by task × condition",
+      barChart(
+        summaries.map((s) => ({
+          label: `${s.task}\n${s.condition}`,
+          value: s.avg_wall_s,
+          ok: s.success_rate > 0,
+        })),
+        { unit: "s", decimals: 2 },
+      ),
+      errBanner,
+    ),
+  );
+
+  benchChartsEl.appendChild(
+    chartBlock(
+      "Success rate by condition",
+      barChart(
+        summaries.map((s) => ({
+          label: `${s.task}\n${s.condition}`,
+          value: s.success_rate * 100,
+          ok: s.success_rate > 0,
+        })),
+        { unit: "%", decimals: 0, max: 100 },
+      ),
+    ),
+  );
+
+  benchChartsEl.appendChild(
+    chartBlock(
+      "Avg TTFT (ms) by condition",
+      barChart(
+        summaries.map((s) => ({
+          label: `${s.task}\n${s.condition}`,
+          value: s.avg_ttft_ms,
+          ok: s.avg_ttft_ms > 0,
+        })),
+        { unit: "ms", decimals: 0 },
+      ),
+    ),
+  );
+
+  benchChartsEl.appendChild(
+    chartBlock(
+      "Final context tokens",
+      barChart(
+        summaries.map((s) => ({
+          label: `${s.task}\n${s.condition}`,
+          value: s.avg_context_tokens_final,
+          ok: true,
+        })),
+        { unit: "tok", decimals: 0 },
+      ),
+    ),
+  );
+}
+
+function chartBlock(
+  title: string,
+  svg: string,
+  banner: string = "",
+): HTMLElement {
+  const div = document.createElement("div");
+  div.className = "bench-chart";
+  div.innerHTML = `<h4>${title}</h4>${banner}${svg}`;
+  return div;
+}
+
+function barChart(
+  rows: Array<{ label: string; value: number; ok: boolean }>,
+  opts: { unit?: string; decimals?: number; max?: number } = {},
+): string {
+  if (!rows.length) return `<div class="bc-empty">no data</div>`;
+  const W = 320;
+  const H = 180;
+  const padL = 28;
+  const padR = 8;
+  const padT = 10;
+  const padB = 36;
+  const innerW = W - padL - padR;
+  const innerH = H - padT - padB;
+  const dataMax = Math.max(...rows.map((r) => r.value), 0);
+  const max = opts.max ?? (dataMax === 0 ? 1 : dataMax * 1.15);
+  const barW = innerW / rows.length;
+  const dec = opts.decimals ?? 1;
+  const unit = opts.unit ?? "";
+
+  const bars = rows
+    .map((r, i) => {
+      const h = max > 0 ? (r.value / max) * innerH : 0;
+      const x = padL + i * barW + barW * 0.15;
+      const y = padT + innerH - h;
+      const w = barW * 0.7;
+      const cls = r.ok ? "bc-bar" : "bc-bar-fail";
+      const lines = r.label.split("\n");
+      const labelTspans = lines
+        .map(
+          (l, j) =>
+            `<tspan x="${x + w / 2}" dy="${j === 0 ? "1.1em" : "1em"}">${escapeXml(l)}</tspan>`,
+        )
+        .join("");
+      const valStr = `${r.value.toFixed(dec)}${unit}`;
+      return `
+        <rect class="${cls}" x="${x}" y="${y}" width="${w}" height="${Math.max(h, 0)}" rx="2" />
+        <text class="bc-value" x="${x + w / 2}" y="${y - 3}" text-anchor="middle">${valStr}</text>
+        <text class="bc-label" x="${x + w / 2}" y="${padT + innerH + 4}" text-anchor="middle">${labelTspans}</text>
+      `;
+    })
+    .join("");
+
+  const yTick = `${max.toFixed(dec)}${unit}`;
+  return `
+    <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">
+      <line class="bc-axis" x1="${padL}" y1="${padT}" x2="${padL}" y2="${padT + innerH}" />
+      <line class="bc-axis" x1="${padL}" y1="${padT + innerH}" x2="${W - padR}" y2="${padT + innerH}" />
+      <text class="bc-tick" x="${padL - 4}" y="${padT + 3}" text-anchor="end">${yTick}</text>
+      <text class="bc-tick" x="${padL - 4}" y="${padT + innerH + 3}" text-anchor="end">0</text>
+      ${bars}
+    </svg>
+  `;
+}
+
+function escapeXml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+benchRefreshResultsBtn.addEventListener("click", refreshBenchResults);
+benchOpenResultsDirBtn.addEventListener("click", async () => {
+  await window.My.bench.openResultsDir();
+});
+
+// Refresh benchmark history when the GPU tab is opened.
+document
+  .querySelectorAll<HTMLElement>('.nav-btn[data-screen="gpu"]')
+  .forEach((btn) => {
+    btn.addEventListener("click", () => {
+      refreshBenchResults();
+    });
+  });
+
+// Initial load (so the list is populated even if user opens the screen directly).
+refreshBenchResults();
+
 // ─────────────────────────────────────────────────────────────────────────────
 // TRAIN SCREEN
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1528,24 +2655,118 @@ const trainLog = $<HTMLElement>("#train-log");
 const trainStartBtn = $<HTMLButtonElement>("#train-start-btn");
 const trainStopBtn = $<HTMLButtonElement>("#train-stop-btn");
 const trainMergeBtn = $<HTMLButtonElement>("#train-merge-btn");
+const trainTestBtn = $<HTMLButtonElement>("#train-test-btn");
 const trainMStep = $("#train-m-step");
 const trainMEpoch = $("#train-m-epoch");
 const trainMLoss = $("#train-m-loss");
 const trainMLr = $("#train-m-lr");
+let trainTestBusy = false;
 
-function trainLogLine(text: string, cls: "" | "ok" | "err" = "") {
+function trainLogLine(
+  text: string,
+  cls: "" | "ok" | "err" = "",
+  kind: "sys" | "info" | "cmd" | "warn" = "sys",
+) {
   const line = document.createElement("div");
-  if (cls) line.className = cls;
-  line.textContent = text;
+  line.className = `line k-${kind}`;
+  if (cls) line.classList.add(cls);
+
+  const ts = document.createElement("span");
+  ts.className = "ts";
+  ts.textContent = new Date().toLocaleTimeString([], {
+    hour12: false,
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+
+  const prompt = document.createElement("span");
+  prompt.className = "prompt";
+  prompt.textContent = cls === "err" ? "!" : cls === "ok" ? "✓" : "$";
+
+  const msg = document.createElement("span");
+  msg.className = "msg";
+  msg.textContent = text;
+
+  line.appendChild(ts);
+  line.appendChild(prompt);
+  line.appendChild(msg);
   trainLog.appendChild(line);
   trainLog.scrollTop = trainLog.scrollHeight;
+}
+
+function trainLogRaw(rawText: string) {
+  const lines = String(rawText)
+    .split(/\r?\n/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  for (const line of lines) {
+    // Some bridge steps emit JSONL; decode and render friendly log lines.
+    if (line.startsWith("{") && line.endsWith("}")) {
+      try {
+        const parsed = JSON.parse(line);
+        const type = String(parsed.type || "");
+        if (type === "status" && parsed.message) {
+          trainLogLine(String(parsed.message), "", "info");
+          continue;
+        }
+        if (type === "done" && parsed.output) {
+          trainLogLine(`Merged model saved to ${parsed.output}`, "ok");
+          continue;
+        }
+      } catch {
+        // non-JSON line, fall through
+      }
+    }
+    trainLogLine(line);
+  }
+}
+
+function setTrainTestBusy(busy: boolean) {
+  trainTestBusy = busy;
+  trainTestBtn.disabled = busy || trainState.running;
+  trainTestBtn.textContent = busy ? "⏳ Testing…" : "▶ Test in Chat";
+}
+
+async function maybeEnableTrainTestButton() {
+  const cfg = readTrainConfig();
+  const mergedPath = `${cfg.output_dir}-merged`;
+  const hasMerged = await window.My.models.exists(mergedPath);
+  trainTestBtn.disabled = trainState.running || trainTestBusy || !hasMerged;
+  if (hasMerged) {
+    trainTestBtn.dataset["mergedPath"] = mergedPath;
+  }
 }
 
 function setTrainRunning(running: boolean) {
   trainState.running = running;
   trainStartBtn.disabled = running;
   trainStopBtn.disabled = !running;
+  trainTestBtn.disabled = running || trainTestBusy;
   trainStartBtn.textContent = running ? "Training…" : "▶ Start Training";
+}
+
+async function runMergeFromTrain(cfg: TrainConfig) {
+  if (!cfg.model_path || !cfg.output_dir) {
+    return {
+      ok: false,
+      error: "Set base model + adapter output directory first",
+      mergedPath: "",
+    };
+  }
+  const mergedPath = cfg.output_dir + "-merged";
+  trainLogLine(`merge ${cfg.output_dir} -> ${mergedPath}`, "", "cmd");
+  const res = await window.My.train.merge(
+    cfg.model_path,
+    cfg.output_dir,
+    mergedPath,
+  );
+  if (res.ok) {
+    trainLogLine(`Merged model saved to ${mergedPath}`, "ok");
+    trainTestBtn.dataset["mergedPath"] = mergedPath;
+    return { ok: true, mergedPath };
+  }
+  return { ok: false, error: res.error || "Merge failed", mergedPath };
 }
 
 // Browse handlers — directory for model/output, file for dataset
@@ -1555,7 +2776,10 @@ $("#train-model-browse").addEventListener("click", async () => {
 });
 $("#train-output-browse").addEventListener("click", async () => {
   const dir = await window.My.dialog.openDir();
-  if (dir) ($("#train-output-path") as HTMLInputElement).value = dir;
+  if (dir) {
+    ($("#train-output-path") as HTMLInputElement).value = dir;
+    void maybeEnableTrainTestButton();
+  }
 });
 $("#train-dataset-browse").addEventListener("click", async () => {
   const file = await window.My.dialog.openFile([
@@ -1569,6 +2793,7 @@ $("#train-dataset-browse").addEventListener("click", async () => {
 window.My.onPaths((paths) => {
   const modelInput = $<HTMLInputElement>("#train-model-path");
   if (!modelInput.value && paths.llmModel) modelInput.value = paths.llmModel;
+  void maybeEnableTrainTestButton();
 });
 
 function readTrainConfig(): TrainConfig {
@@ -1624,30 +2849,74 @@ trainStopBtn.addEventListener("click", async () => {
 
 trainMergeBtn.addEventListener("click", async () => {
   const cfg = readTrainConfig();
-  if (!cfg.model_path || !cfg.output_dir) {
-    showToast("Set base model + adapter output directory first", "error");
+  const res = await runMergeFromTrain(cfg);
+  if (res.ok) {
+    showToast("Merge complete ✓", "success");
+    await maybeEnableTrainTestButton();
+  } else {
+    trainLogLine(`Merge failed: ${res.error}`, "err");
+    showToast(`Merge failed: ${res.error}`, "error", 6000);
+  }
+});
+
+trainTestBtn.addEventListener("click", async () => {
+  const cfg = readTrainConfig();
+  if (!cfg.output_dir) {
+    showToast("Set adapter output directory first", "error");
     return;
   }
-  const mergedPath = cfg.output_dir + "-merged";
-  trainLogLine(`Merging adapter from ${cfg.output_dir} into ${mergedPath}...`);
-  const res = await window.My.train.merge(
-    cfg.model_path,
-    cfg.output_dir,
-    mergedPath,
-  );
-  if (res.ok) {
-    trainLogLine(`✓ Merged model saved to ${mergedPath}`, "ok");
-    showToast("Merge complete ✓", "success");
-  } else {
-    trainLogLine(`✗ Merge failed: ${res.error}`, "err");
-    showToast(`Merge failed: ${res.error}`, "error", 6000);
+
+  setTrainTestBusy(true);
+  try {
+    const mergedPath = `${cfg.output_dir}-merged`;
+    let canLoadMerged = await window.My.models.exists(mergedPath);
+
+    // If no merged model exists yet, merge now (requires base model + adapter dir).
+    if (!canLoadMerged) {
+      if (!cfg.model_path) {
+        showToast(
+          "Set base model path (or merge once first) before Test in Chat",
+          "error",
+          6000,
+        );
+        return;
+      }
+      const mergeRes = await runMergeFromTrain(cfg);
+      if (!mergeRes.ok) {
+        trainLogLine(`Merge failed: ${mergeRes.error}`, "err");
+        showToast(`Merge failed: ${mergeRes.error}`, "error", 6000);
+        return;
+      }
+      canLoadMerged = true;
+    }
+
+    if (!canLoadMerged) {
+      showToast("Merged model not found", "error");
+      return;
+    }
+
+    trainLogLine(`load ${mergedPath}`, "", "cmd");
+    // Stop any running LLM first
+    await window.My.llm.stop();
+    const res = await window.My.llm.start(mergedPath);
+    if (!res.ok) {
+      trainLogLine(`Failed to load: ${res.error}`, "err");
+      showToast(`Load failed: ${res.error}`, "error", 6000);
+      return;
+    }
+    trainLogLine(`Model ready: ${mergedPath}`, "ok");
+    showToast("Trained model loaded — switching to Chat ✓", "success");
+    activateScreen("chat");
+  } finally {
+    setTrainTestBusy(false);
+    await maybeEnableTrainTestButton();
   }
 });
 
 window.My.train.onEvent((msg: BridgeMsg) => {
   switch (msg.type) {
     case "status":
-      trainLogLine(`ℹ ${msg["message"]}`);
+      trainLogLine(`${msg["message"]}`, "", "info");
       break;
     case "config":
       trainState.totalSteps = Number(msg["total_steps"]) || 0;
@@ -1670,10 +2939,10 @@ window.My.train.onEvent((msg: BridgeMsg) => {
       break;
     }
     case "epoch":
-      trainLogLine(`▶ Epoch ${msg["epoch"]} / ${msg["total"]}`);
+      trainLogLine(`epoch ${msg["epoch"]} / ${msg["total"]}`, "", "cmd");
       break;
     case "log":
-      trainLogLine(String(msg["text"] ?? ""));
+      trainLogRaw(String(msg["text"] ?? ""));
       break;
     case "stderr":
       // quiet filter — only show interesting stderr lines
@@ -1685,7 +2954,7 @@ window.My.train.onEvent((msg: BridgeMsg) => {
           !t.includes("UserWarning") &&
           !t.includes("warnings.warn")
         ) {
-          trainLogLine(t);
+          trainLogLine(t, "", "warn");
         }
       }
       break;
@@ -1697,6 +2966,7 @@ window.My.train.onEvent((msg: BridgeMsg) => {
       showToast("Training complete ✓", "success");
       trainBar.style.width = "100%";
       setTrainRunning(false);
+      void maybeEnableTrainTestButton();
       break;
     case "error":
       trainLogLine(`✗ ${msg["message"]}`, "err");
@@ -1765,6 +3035,7 @@ savePromptBtn.addEventListener("click", async () => {
       face_fix_strength: parseFloat(
         ($("#img-face-fix-strength") as HTMLInputElement).value,
       ),
+      nsfw_seg: ($("#img-nsfw-seg") as HTMLInputElement).checked,
     },
   };
   await window.My.prompts.save(entry);
@@ -1812,6 +3083,7 @@ loadPromptBtn.addEventListener("click", () => {
   if (params["height"] !== undefined) setInput("#img-height", params["height"]);
   setCheck("#img-upscale", params["upscale"]);
   setCheck("#img-face-fix", params["face_fix"]);
+  setCheck("#img-nsfw-seg", params["nsfw_seg"]);
   if (params["face_fix_strength"] !== undefined) {
     setInput("#img-face-fix-strength", params["face_fix_strength"]);
   }

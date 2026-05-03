@@ -31,12 +31,50 @@ def main():
 
     emit({"type": "status", "message": f"Fetching model info for {args.repo_id}..."})
 
+    tags = []
+    pipeline_tag = None
+    should_block_download = False
     try:
         api = HfApi()
         info = api.model_info(args.repo_id)
-        emit({"type": "info", "id": args.repo_id, "tags": info.tags or []})
+        tags = info.tags or []
+        pipeline_tag = getattr(info, "pipeline_tag", None)
+        emit({"type": "info", "id": args.repo_id, "tags": tags})
+
+        image_hint = {
+            "diffusers",
+            "stable-diffusion",
+            "text-to-image",
+            "image-to-image",
+        }
+        llm_hint = {
+            "text-generation",
+            "causal-lm",
+            "gguf",
+            "llama",
+            "qwen",
+            "gemma",
+        }
+        tag_set = {str(t).lower() for t in tags}
+        pipe = str(pipeline_tag or "").lower()
+
+        if args.type == "image" and not (tag_set & image_hint or pipe in image_hint):
+            if tag_set & llm_hint or pipe in llm_hint:
+                should_block_download = True
+                emit(
+                    {
+                        "type": "error",
+                        "message": (
+                            "Selected type is 'image', but this repository looks like an LLM "
+                            "(text-generation/GGUF). Choose type 'llm' or use an image model repo."
+                        ),
+                    }
+                )
     except Exception as e:
         emit({"type": "error", "message": f"Could not fetch model info: {e}"})
+
+    if should_block_download:
+        sys.exit(1)
 
     emit({"type": "status", "message": f"Downloading {args.repo_id} to {args.local_dir}..."})
 
@@ -46,7 +84,6 @@ def main():
         snapshot_download(
             repo_id=args.repo_id,
             local_dir=args.local_dir,
-            local_dir_use_symlinks=False,
         )
         emit({"type": "done", "path": args.local_dir})
     except Exception as e:

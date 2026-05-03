@@ -15,6 +15,17 @@ interface MyAPI {
     status(): Promise<{ running: boolean; ready: boolean }>;
     onEvent(cb: (msg: BridgeMsg) => void): () => void;
   };
+  vision: {
+    describeImage(
+      imagePath: string,
+      hint?: string,
+    ): Promise<{
+      ok: boolean;
+      caption?: string;
+      model?: string;
+      error?: string;
+    }>;
+  };
   image: {
     start(
       modelPath?: string,
@@ -63,6 +74,15 @@ interface MyAPI {
   };
   media: {
     list(subdir?: string): Promise<MediaListing>;
+    getThumbnail(
+      filePath: string,
+      maxSize?: number,
+    ): Promise<{
+      ok: boolean;
+      path?: string;
+      cached?: boolean;
+      error?: string;
+    }>;
     createFolder(
       name: string,
     ): Promise<{ ok: boolean; path?: string; error?: string }>;
@@ -96,6 +116,22 @@ interface MyAPI {
     ): Promise<{ ok: boolean; error?: string }>;
     onEvent(cb: (msg: BridgeMsg) => void): () => void;
   };
+  bench: {
+    start(config: BenchmarkConfig): Promise<{ ok: boolean; error?: string }>;
+    stop(): Promise<{ ok: boolean }>;
+    status(): Promise<{ running: boolean; resultsDir: string }>;
+    listResults(): Promise<{
+      ok: boolean;
+      dir: string;
+      files: BenchmarkResultFile[];
+      error?: string;
+    }>;
+    getResult(
+      filePath: string,
+    ): Promise<{ ok: boolean; data?: unknown; error?: string }>;
+    openResultsDir(): Promise<{ ok: boolean }>;
+    onEvent(cb: (msg: BridgeMsg) => void): () => void;
+  };
   dialog: {
     openDir(): Promise<string | null>;
     openFile(
@@ -105,6 +141,12 @@ interface MyAPI {
   system: {
     diagnostics(): Promise<SystemDiagnostics>;
     gpuInfo(): Promise<GpuInfoResponse>;
+    clearThumbnailCache(): Promise<{
+      ok: boolean;
+      removedFiles?: number;
+      removedBytes?: number;
+      error?: string;
+    }>;
   };
   onPaths(cb: (paths: AppPaths) => void): void;
 }
@@ -162,6 +204,22 @@ interface TrainConfig {
   use_4bit: boolean;
 }
 
+interface BenchmarkConfig {
+  models: string;
+  tasks: string;
+  conditions: string;
+  trials: number;
+  output?: string;
+  dryRun: boolean;
+}
+
+interface BenchmarkResultFile {
+  name: string;
+  path: string;
+  size: number;
+  mtime: number;
+}
+
 interface BridgeMsg {
   type: string;
   text?: string;
@@ -187,7 +245,7 @@ interface CatalogEntry {
   id: string;
   name: string;
   repoId: string;
-  category: "llm" | "image" | "upscaler" | "vae" | "face";
+  category: "llm" | "image" | "upscaler" | "vae" | "face" | "nsfw";
   minVramGb: number;
   sizeGb: number;
   description: string;
@@ -228,6 +286,7 @@ interface ModelInfo {
   path: string;
   type: string;
   exists: boolean;
+  sizeGb?: number;
 }
 
 interface AppPaths {

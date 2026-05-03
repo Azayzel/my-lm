@@ -22,6 +22,12 @@ contextBridge.exposeInMainWorld("My", {
     },
   },
 
+  // Vision helpers
+  vision: {
+    describeImage: (imagePath: string, hint?: string) =>
+      ipcRenderer.invoke("vision:describeImage", imagePath, hint),
+  },
+
   // Image generation
   image: {
     start: (modelPath?: string) => ipcRenderer.invoke("image:start", modelPath),
@@ -74,6 +80,8 @@ contextBridge.exposeInMainWorld("My", {
   // Media
   media: {
     list: (subdir?: string) => ipcRenderer.invoke("media:list", subdir),
+    getThumbnail: (filePath: string, maxSize?: number) =>
+      ipcRenderer.invoke("media:getThumbnail", filePath, maxSize),
     createFolder: (name: string) =>
       ipcRenderer.invoke("media:createFolder", name),
     deleteFolder: (relPath: string) =>
@@ -113,6 +121,22 @@ contextBridge.exposeInMainWorld("My", {
     },
   },
 
+  // Benchmarking (agent_bench.py)
+  bench: {
+    start: (config: object) => ipcRenderer.invoke("bench:start", config),
+    stop: () => ipcRenderer.invoke("bench:stop"),
+    status: () => ipcRenderer.invoke("bench:status"),
+    listResults: () => ipcRenderer.invoke("bench:listResults"),
+    getResult: (filePath: string) =>
+      ipcRenderer.invoke("bench:getResult", filePath),
+    openResultsDir: () => ipcRenderer.invoke("bench:openResultsDir"),
+    onEvent: (cb: (msg: object) => void) => {
+      const handler = (_: unknown, msg: object) => cb(msg);
+      ipcRenderer.on("bench:event", handler);
+      return () => ipcRenderer.removeListener("bench:event", handler);
+    },
+  },
+
   // Config / Settings
   config: {
     get: () => ipcRenderer.invoke("config:get"),
@@ -131,6 +155,7 @@ contextBridge.exposeInMainWorld("My", {
   system: {
     diagnostics: () => ipcRenderer.invoke("system:diagnostics"),
     gpuInfo: () => ipcRenderer.invoke("system:gpuInfo"),
+    clearThumbnailCache: () => ipcRenderer.invoke("system:clearThumbnailCache"),
   },
 
   onPaths: (

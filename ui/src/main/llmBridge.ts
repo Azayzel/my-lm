@@ -11,6 +11,7 @@ export class LLMBridge {
     private scriptsDir: string,
     private modelPath: string,
     private python: string = "python",
+    private bridgeScript: string = "llm_bridge.py",
   ) {}
 
   isRunning() {
@@ -24,9 +25,14 @@ export class LLMBridge {
     onEvent: (msg: object) => void,
   ): Promise<{ ok: boolean; message?: string; error?: string }> {
     return new Promise((resolve) => {
-      const bridge = path.join(this.scriptsDir, "llm_bridge.py");
+      const bridge = path.join(this.scriptsDir, this.bridgeScript);
       this.proc = spawn(this.python, [bridge, this.modelPath], {
         stdio: ["pipe", "pipe", "pipe"],
+        env: {
+          ...process.env,
+          PYTHONUNBUFFERED: "1",
+          PYTHONIOENCODING: "utf-8",
+        },
       });
       this._running = true;
 
@@ -50,9 +56,8 @@ export class LLMBridge {
       });
 
       this.proc.stderr!.on("data", (d: Buffer) => {
-        // Suppress stderr noise but pass critical info
-        const text = d.toString();
-        if (text.includes("Error") || text.includes("error")) {
+        const text = d.toString().trim();
+        if (text) {
           onEvent({ type: "stderr", text });
         }
       });

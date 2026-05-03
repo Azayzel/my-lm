@@ -12,7 +12,8 @@ __pycache__/
 .ruff_cache/
 .coverage
 htmlcov/
-
+ui/dreamshaper-xl/
+ui/juggernaut-3b/
 # Node / Electron
 node_modules/
 dist/
@@ -30,6 +31,11 @@ llama.cpp/
 *.pth
 *.onnx
 ui/qwen2.5-3b/
+ui/nsfw/
+ui/face_detector/
+ui/juggernaut-xl/
+
+datasets/poses/
 
 # OS / editor
 .DS_Store
