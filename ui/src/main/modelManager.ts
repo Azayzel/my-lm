@@ -17,14 +17,99 @@ export class ModelManager {
     private modelsDir: string,
   ) {}
 
+  private hasAnyFileWithExt(dir: string, exts: string[]): boolean {
+    try {
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+      const extSet = new Set(exts.map((e) => e.toLowerCase()));
+      return entries.some((e) => {
+        if (!e.isFile()) return false;
+        const ext = path.extname(e.name).toLowerCase();
+        return extSet.has(ext);
+      });
+    } catch {
+      return false;
+    }
+  }
+
+  private hasAnyNamedFile(dir: string, names: string[]): boolean {
+    try {
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+      const nameSet = new Set(names.map((n) => n.toLowerCase()));
+      return entries.some(
+        (e) => e.isFile() && nameSet.has(e.name.toLowerCase()),
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  private detectFileModelType(fileName: string): ModelInfo["type"] {
+    const lower = fileName.toLowerCase();
+    const ext = path.extname(lower);
+
+    if (ext === ".gguf") return "llm";
+    if (lower.includes("adapter_model.")) return "adapter";
+
+    return "unknown";
+  }
+
   private detectModelType(
     fullPath: string,
     dirName: string,
   ): ModelInfo["type"] {
+    const dirLower = dirName.toLowerCase();
+
     if (dirName === "upscalers") return "upscaler";
     if (fs.existsSync(path.join(fullPath, "adapter_config.json")))
       return "adapter";
     if (fs.existsSync(path.join(fullPath, "model_index.json"))) return "image";
+
+    // Common image model structures from Diffusers-style repos.
+    if (
+      fs.existsSync(path.join(fullPath, "unet")) &&
+      fs.existsSync(path.join(fullPath, "scheduler"))
+    ) {
+      return "image";
+    }
+    if (
+      fs.existsSync(path.join(fullPath, "vae")) &&
+      (fs.existsSync(path.join(fullPath, "text_encoder")) ||
+        fs.existsSync(path.join(fullPath, "text_encoder_2")))
+    ) {
+      return "image";
+    }
+
+    if (this.hasAnyFileWithExt(fullPath, [".gguf"])) return "llm";
+
+    // Hugging Face transformer folder patterns.
+    if (
+      (fs.existsSync(path.join(fullPath, "tokenizer.json")) ||
+        fs.existsSync(path.join(fullPath, "tokenizer_config.json"))) &&
+      this.hasAnyNamedFile(fullPath, [
+        "model.safetensors",
+        "pytorch_model.bin",
+        "pytorch_model.safetensors",
+      ])
+    ) {
+      return "llm";
+    }
+
+    if (
+      dirLower.includes("sdxl") ||
+      dirLower.includes("diffusion") ||
+      dirLower.includes("dreamshaper") ||
+      dirLower.includes("juggernaut")
+    ) {
+      if (
+        this.hasAnyNamedFile(fullPath, [
+          "model_index.json",
+          "v1-inference.yaml",
+        ]) ||
+        fs.existsSync(path.join(fullPath, "unet"))
+      ) {
+        return "image";
+      }
+    }
 
     const configPath = path.join(fullPath, "config.json");
     if (fs.existsSync(configPath)) {
@@ -76,6 +161,31 @@ export class ModelManager {
     const walk = (dir: string, depth: number) => {
       const entries = fs.readdirSync(dir, { withFileTypes: true });
       for (const entry of entries) {
+        if (entry.isFile()) {
+          // Only include standalone top-level files (e.g. *.gguf) to avoid
+          // flooding with internal files from model directories.
+          if (depth === 0) {
+            const type = this.detectFileModelType(entry.name);
+            if (type !== "unknown") {
+              const fullPath = path.join(dir, entry.name);
+              const relName = path
+                .relative(this.modelsDir, fullPath)
+                .replace(/\\/g, "/");
+              const sizeGb = parseFloat(
+                (fs.statSync(fullPath).size / (1024 * 1024 * 1024)).toFixed(2),
+              );
+              out.push({
+                name: relName,
+                path: fullPath,
+                type,
+                exists: true,
+                sizeGb,
+              });
+            }
+          }
+          continue;
+        }
+
         if (!entry.isDirectory()) continue;
         const fullPath = path.join(dir, entry.name);
         const relName = path

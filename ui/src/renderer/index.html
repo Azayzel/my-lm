@@ -46,6 +46,17 @@
         --shadow-soft: 0 18px 40px rgba(0, 0, 0, 0.35);
         --shadow-glow: 0 0 0 1px rgba(110, 200, 255, 0.1),
           0 0 40px rgba(101, 243, 216, 0.12);
+        --space-1: 6px;
+        --space-2: 10px;
+        --space-3: 14px;
+        --space-4: 18px;
+        --space-5: 24px;
+        --fs-xxs: 10px;
+        --fs-xs: 11px;
+        --fs-sm: 12px;
+        --fs-md: 13px;
+        --fs-lg: 15px;
+        --fs-xl: 18px;
       }
 
       html,
@@ -70,6 +81,7 @@
         overflow: hidden;
         user-select: none;
         letter-spacing: 0.01em;
+        line-height: 1.42;
       }
 
       body::before,
@@ -216,8 +228,28 @@
       }
       .nav-btn .icon {
         font-size: 18px;
-        width: 22px;
+        width: 24px;
+        height: 24px;
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid rgba(156, 191, 231, 0.16);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
         text-align: center;
+        transition: transform 0.2s, box-shadow 0.2s;
+      }
+      .nav-btn:hover .icon {
+        transform: translateY(-1px);
+        box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
+      }
+      .nav-btn.active .icon {
+        background: linear-gradient(
+          135deg,
+          rgba(101, 243, 216, 0.24),
+          rgba(110, 200, 255, 0.2)
+        );
+        border-color: rgba(110, 200, 255, 0.35);
       }
 
       .sidebar-footer {
@@ -871,6 +903,94 @@
         box-shadow: 0 0 14px rgba(101, 243, 216, 0.32);
       }
 
+      .dashboard-hero {
+        border-radius: calc(var(--radius) + 2px);
+        background: linear-gradient(
+            135deg,
+            rgba(101, 243, 216, 0.12),
+            rgba(110, 200, 255, 0.08)
+          ),
+          var(--glass-bg);
+        border: 1px solid rgba(110, 200, 255, 0.28);
+        padding: 16px 18px;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        box-shadow: var(--shadow-soft), var(--shadow-glow);
+      }
+      .hero-title-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+      .hero-title h2 {
+        margin: 0;
+        font-size: 22px;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+      }
+      .hero-title p {
+        margin-top: 4px;
+        font-size: 12px;
+        color: var(--text2);
+      }
+      .hero-kpis {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+      }
+      .hero-kpi {
+        border-radius: 12px;
+        padding: 10px 12px;
+        border: 1px solid rgba(156, 191, 231, 0.24);
+        background: rgba(7, 16, 28, 0.58);
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+      .hero-kpi .kpi-label {
+        font-size: 10px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--text3);
+      }
+      .hero-kpi .kpi-value {
+        font-size: 14px;
+        color: var(--text1);
+        font-weight: 600;
+      }
+      .hero-actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .section-shell {
+        border-radius: calc(var(--radius) + 2px);
+        padding: 14px;
+        border: 1px solid rgba(156, 191, 231, 0.22);
+        background: linear-gradient(
+          180deg,
+          rgba(255, 255, 255, 0.04),
+          rgba(255, 255, 255, 0.01)
+        );
+      }
+
+      .section-title-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 14px;
+      }
+      .section-title-row h3 {
+        margin: 0;
+        font-size: 14px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+      }
+
       .folder-card,
       .media-card,
       .model-card,
@@ -959,6 +1079,9 @@
         #chat-side-panel,
         #image-side-panel {
           width: 248px;
+        }
+        .hero-kpis {
+          grid-template-columns: 1fr;
         }
       }
 
@@ -2108,6 +2231,7 @@
         font-size: 18px;
         font-weight: 700;
         background: linear-gradient(135deg, var(--accent), var(--accent2));
+        background-clip: text;
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
       }
@@ -2318,6 +2442,332 @@
         margin-bottom: 8px;
       }
 
+      /* ── Product Rhythm Pass ───────────────────────────────────── */
+      .dashboard-hero {
+        padding: var(--space-3) var(--space-4);
+        gap: var(--space-2);
+      }
+      .hero-title h2 {
+        font-size: 20px;
+      }
+      .hero-title p {
+        font-size: var(--fs-xs);
+      }
+      .hero-kpis {
+        gap: var(--space-2);
+      }
+      .hero-kpi {
+        padding: 8px 10px;
+      }
+      .hero-kpi .kpi-value {
+        font-size: var(--fs-md);
+      }
+      .section-shell {
+        padding: 12px;
+      }
+      .section-title-row {
+        margin-bottom: var(--space-2);
+      }
+      .section-title-row h3 {
+        font-size: var(--fs-md);
+      }
+
+      #messages {
+        padding: 16px 20px;
+        gap: var(--space-3);
+      }
+      .msg {
+        gap: var(--space-2);
+      }
+      .bubble {
+        padding: 10px 14px;
+        font-size: var(--fs-md);
+        line-height: 1.52;
+      }
+      #chat-input-bar {
+        padding: 12px 18px;
+      }
+      #chat-side-panel,
+      #image-side-panel {
+        padding: 14px;
+        gap: var(--space-2);
+      }
+
+      .side-section {
+        gap: var(--space-1);
+      }
+      .side-section h3,
+      label.field-label,
+      .bench-field label {
+        font-size: var(--fs-xxs);
+      }
+      .u-fs-micro {
+        font-size: 9px !important;
+      }
+      .u-fs-xxs {
+        font-size: var(--fs-xxs) !important;
+      }
+      .u-fs-xs {
+        font-size: var(--fs-xs) !important;
+      }
+      .u-fs-sm {
+        font-size: var(--fs-sm) !important;
+      }
+      .u-fs-md {
+        font-size: var(--fs-md) !important;
+      }
+      .u-fs-lg {
+        font-size: var(--fs-lg) !important;
+      }
+      .u-fs-xl {
+        font-size: var(--fs-xl) !important;
+      }
+      .u-fs-2xl {
+        font-size: 20px !important;
+      }
+      .u-mt-0 {
+        margin-top: 0 !important;
+      }
+      .u-mt-1 {
+        margin-top: 4px !important;
+      }
+      .u-mt-2 {
+        margin-top: 8px !important;
+      }
+      .u-mt-3 {
+        margin-top: 12px !important;
+      }
+      .u-mt-4 {
+        margin-top: 16px !important;
+      }
+      .u-mt-5 {
+        margin-top: 20px !important;
+      }
+      .u-mb-1 {
+        margin-bottom: 4px !important;
+      }
+      .u-mb-2 {
+        margin-bottom: 8px !important;
+      }
+      .u-mb-3 {
+        margin-bottom: 12px !important;
+      }
+      .u-mb-4 {
+        margin-bottom: 16px !important;
+      }
+      .u-mr-2 {
+        margin-right: 8px !important;
+      }
+      .u-mr-1 {
+        margin-right: 4px !important;
+      }
+      .u-ml-2 {
+        margin-left: 6px !important;
+      }
+      .u-gap-0 {
+        gap: 2px !important;
+      }
+      .u-gap-1 {
+        gap: 4px !important;
+      }
+      .u-gap-2 {
+        gap: 6px !important;
+      }
+      .u-gap-3 {
+        gap: 8px !important;
+      }
+      .u-gap-4 {
+        gap: 12px !important;
+      }
+      .u-gap-5 {
+        gap: 14px !important;
+      }
+      .u-gap-6 {
+        gap: 16px !important;
+      }
+      .u-p-2 {
+        padding: 8px !important;
+      }
+      .u-p-3 {
+        padding: 12px !important;
+      }
+      .u-p-4 {
+        padding: 16px !important;
+      }
+      .u-py-5 {
+        padding-top: 20px !important;
+        padding-bottom: 20px !important;
+      }
+      .u-px-2 {
+        padding-left: 8px !important;
+        padding-right: 8px !important;
+      }
+      .u-px-3 {
+        padding-left: 12px !important;
+        padding-right: 12px !important;
+      }
+      .u-py-0 {
+        padding-top: 0 !important;
+        padding-bottom: 0 !important;
+      }
+      .u-py-2 {
+        padding-top: 8px !important;
+        padding-bottom: 8px !important;
+      }
+      .u-flex {
+        display: flex !important;
+      }
+      .u-col {
+        flex-direction: column !important;
+      }
+      .u-grid-2 {
+        display: grid !important;
+        grid-template-columns: 1fr 1fr !important;
+      }
+      .u-center-y {
+        align-items: center !important;
+      }
+      .u-center-between {
+        align-items: center !important;
+        justify-content: space-between !important;
+      }
+      .u-wrap {
+        flex-wrap: wrap !important;
+      }
+      .u-flex-1 {
+        flex: 1 !important;
+      }
+      .u-w-full {
+        width: 100% !important;
+      }
+      .u-nowrap {
+        white-space: nowrap !important;
+      }
+      .u-label-check {
+        display: flex !important;
+        align-items: center !important;
+        gap: 6px !important;
+        cursor: pointer !important;
+        margin: 0 !important;
+      }
+      .u-label-check-compact {
+        display: flex !important;
+        align-items: center !important;
+        gap: 4px !important;
+        cursor: pointer !important;
+      }
+      .u-pad-tab {
+        padding: 8px 14px !important;
+      }
+      .u-pad-btn-tight {
+        padding: 4px 8px !important;
+      }
+      .u-pad-btn-sm {
+        padding: 6px !important;
+      }
+      .u-pad-btn-sm-wide {
+        padding: 6px 12px !important;
+      }
+      .u-pad-btn-inline {
+        padding: 0 16px !important;
+      }
+      .field-input,
+      .field-textarea,
+      .field-select {
+        padding: 6px 9px;
+        font-size: var(--fs-sm);
+      }
+      .btn {
+        padding: 7px 12px;
+        font-size: var(--fs-sm);
+      }
+      .btn-sm {
+        padding: 4px 9px;
+        font-size: var(--fs-xs);
+      }
+
+      #image-preview-area,
+      #screen-media,
+      #screen-models,
+      #screen-gpu {
+        padding: 18px;
+      }
+      #image-preview-area {
+        gap: var(--space-3);
+      }
+      #screen-books,
+      #screen-train,
+      #screen-settings {
+        padding: 18px 24px;
+      }
+      #screen-books,
+      #screen-train {
+        gap: var(--space-3);
+      }
+      #screen-books h2,
+      #screen-train h2,
+      .media-header h2,
+      .models-header h2,
+      .gpu-header h2 {
+        font-size: var(--fs-xl) !important;
+      }
+      .books-panel h3,
+      .train-card h3,
+      .download-form h3,
+      .catalog-header h3,
+      .settings-card h3,
+      .bench-section h3 {
+        font-size: var(--fs-sm) !important;
+      }
+
+      .model-card,
+      .download-form,
+      .catalog-section,
+      .catalog-card,
+      .gpu-card,
+      .bench-section,
+      .books-controls,
+      .books-panel,
+      .train-card,
+      .train-progress,
+      .settings-card {
+        padding: 14px 16px;
+      }
+      .models-header {
+        margin-bottom: 14px;
+      }
+      #models-list,
+      #books-results,
+      .train-grid {
+        gap: 12px;
+      }
+      .train-progress .metrics {
+        gap: 8px;
+      }
+      .train-progress .metric .value {
+        font-size: var(--fs-md);
+      }
+      #bench-log,
+      #download-log,
+      #diagnostics-log,
+      #gpu-raw,
+      #train-log,
+      #bench-result-detail {
+        font-size: var(--fs-xs);
+      }
+      #books-llm-output {
+        font-size: var(--fs-md);
+        line-height: 1.52;
+      }
+
+      /* Tighten screen-specific inline styling with high-priority overrides. */
+      #screen-models h3[style],
+      #screen-gpu h3[style],
+      #screen-train h3[style],
+      #screen-books h3[style] {
+        letter-spacing: 0.03em;
+      }
+
       /* ── Scrollbars global ───────────────────────────────────────── */
       * {
         scrollbar-width: thin;
@@ -2370,11 +2820,11 @@
           <div class="model-status">
             <div class="ms-label">Model Status</div>
             <div class="ms-row">
-              <span style="color: var(--text2); font-size: 11px">LLM</span>
+              <span class="u-fs-xs" style="color: var(--text2)">LLM</span>
               <div class="dot" id="llm-dot"></div>
             </div>
             <div class="ms-row">
-              <span style="color: var(--text2); font-size: 11px">Image</span>
+              <span class="u-fs-xs" style="color: var(--text2)">Image</span>
               <div class="dot" id="img-dot"></div>
             </div>
           </div>
@@ -2422,7 +2872,7 @@
           <div id="chat-side-panel">
             <div class="side-section">
               <h3>LLM Model</h3>
-              <select class="field-select" id="chat-model-select" style="width: 100%; margin-bottom: 8px">
+              <select class="field-select u-w-full u-mb-2" id="chat-model-select">
                 <option value="">-- Select a model --</option>
               </select>
               <div class="btn btn-primary btn-block" id="llm-load-btn">
@@ -2519,7 +2969,7 @@ You are My-LM, a helpful AI assistant.</textarea
               <div class="progress-label">
                 <span id="progress-label-text">Generating…</span>
                 <span>
-                  <span id="progress-eta" style="color: var(--text3); margin-right: 8px"></span>
+                  <span id="progress-eta" class="u-mr-2" style="color: var(--text3)"></span>
                   <span id="progress-steps">0 / 0</span>
                 </span>
               </div>
@@ -2532,44 +2982,44 @@ You are My-LM, a helpful AI assistant.</textarea
           <!-- Image right panel -->
           <div id="image-side-panel">
             <!-- Model Control Bar -->
-            <div style="display: flex; gap: 8px; padding: 12px; background: var(--bg1); border-bottom: 1px solid var(--border); align-items: center">
-              <div style="flex: 1">
-                <div style="font-size: 11px; color: var(--text3); margin-bottom: 4px">🎨 Image Model</div>
-                <div class="btn btn-primary btn-sm" id="img-load-btn" style="width: 100%; padding: 6px">
+            <div class="u-flex u-gap-3 u-p-3 u-center-y" style="background: var(--bg1); border-bottom: 1px solid var(--border)">
+              <div class="u-flex-1">
+                <div class="u-fs-xs u-mb-1" style="color: var(--text3)">🎨 Image Model</div>
+                <div class="btn btn-primary btn-sm u-w-full u-pad-btn-sm" id="img-load-btn">
                   Load Model
                 </div>
               </div>
               <div
-                class="btn btn-danger btn-sm"
+                class="btn btn-danger btn-sm u-nowrap u-pad-btn-sm-wide"
                 id="img-stop-btn"
-                style="display: none; padding: 6px 12px; white-space: nowrap"
+                style="display: none"
               >
                 Stop
               </div>
               <div
-                class="btn btn-ghost btn-sm"
+                class="btn btn-ghost btn-sm u-nowrap u-pad-btn-sm-wide"
                 id="img-unload-btn"
-                style="display: none; padding: 6px 12px; white-space: nowrap"
+                style="display: none"
               >
                 Unload
               </div>
             </div>
 
             <!-- Ribbon Tabs -->
-            <div style="display: flex; gap: 2px; background: var(--bg2); border-bottom: 1px solid var(--border); overflow-x: auto; padding: 0 8px; font-size: 12px">
-              <button class="ribbon-tab active" data-tab="prompt" style="padding: 8px 14px; border-bottom: 2px solid var(--accent)">📝 Prompt</button>
-              <button class="ribbon-tab" data-tab="settings" style="padding: 8px 14px">⚙️ Settings</button>
-              <button class="ribbon-tab" data-tab="advanced" style="padding: 8px 14px">✨ Advanced</button>
-              <button class="ribbon-tab" data-tab="saved" style="padding: 8px 14px">💾 Saved</button>
+            <div class="u-fs-sm u-flex u-px-2 u-py-0 u-gap-0" style="background: var(--bg2); border-bottom: 1px solid var(--border); overflow-x: auto">
+              <button class="ribbon-tab u-pad-tab active" data-tab="prompt" style="border-bottom: 2px solid var(--accent)">📝 Prompt</button>
+              <button class="ribbon-tab u-pad-tab" data-tab="settings">⚙️ Settings</button>
+              <button class="ribbon-tab u-pad-tab" data-tab="advanced">✨ Advanced</button>
+              <button class="ribbon-tab u-pad-tab" data-tab="saved">💾 Saved</button>
             </div>
 
             <!-- Ribbon Content -->
             <div style="flex: 1; overflow-y: auto">
               <!-- Prompt Tab -->
               <div class="ribbon-content active" data-tab="prompt">
-                <div style="padding: 16px; display: flex; flex-direction: column; gap: 12px">
+                <div class="u-p-4 u-flex u-col u-gap-4">
                   <!-- Quick Buttons -->
-                  <div style="display: flex; gap: 6px; justify-content: center">
+                  <div class="u-flex u-gap-2" style="justify-content: center">
                     <button
                       class="btn btn-sm"
                       id="describe-prompt-btn"
@@ -2589,8 +3039,8 @@ You are My-LM, a helpful AI assistant.</textarea
                   </div>
 
                   <!-- Mode Radio Buttons -->
-                  <div style="display: flex; gap: 8px; font-size: 11px; color: var(--text2); justify-content: center; flex-wrap: wrap">
-                    <label style="display: flex; align-items: center; gap: 4px; cursor: pointer">
+                  <div class="u-fs-xs u-flex u-gap-3 u-wrap" style="color: var(--text2); justify-content: center">
+                    <label class="u-label-check-compact">
                       <input
                         type="radio"
                         id="describe-mode-full"
@@ -2601,7 +3051,7 @@ You are My-LM, a helpful AI assistant.</textarea
                       />
                       Full
                     </label>
-                    <label style="display: flex; align-items: center; gap: 4px; cursor: pointer">
+                    <label class="u-label-check-compact">
                       <input
                         type="radio"
                         id="describe-mode-position"
@@ -2611,7 +3061,7 @@ You are My-LM, a helpful AI assistant.</textarea
                       />
                       Position
                     </label>
-                    <label style="display: flex; align-items: center; gap: 4px; cursor: pointer">
+                    <label class="u-label-check-compact">
                       <input
                         type="radio"
                         id="describe-mode-position-append"
@@ -2625,32 +3075,30 @@ You are My-LM, a helpful AI assistant.</textarea
 
                   <!-- Head -->
                   <div>
-                    <label class="field-label" style="font-size: 10px; color: var(--text2)">🎯 Quality Tags</label>
+                    <label class="field-label u-fs-xxs" style="color: var(--text2)">🎯 Quality Tags</label>
                     <input
-                      class="field-input"
+                      class="field-input u-fs-xs"
                       id="pb-head"
                       type="text"
                       value="masterpiece, best quality, photorealistic, ultra-detailed, 8k raw photo"
-                      style="font-size: 11px"
                     />
                   </div>
 
                   <!-- Subject -->
                   <div>
-                    <label class="field-label" style="font-size: 10px; color: var(--text2)">👤 Subject / Name</label>
+                    <label class="field-label u-fs-xxs" style="color: var(--text2)">👤 Subject / Name</label>
                     <input
-                      class="field-input"
+                      class="field-input u-fs-xs"
                       id="pb-name"
                       type="text"
                       placeholder="e.g. Superman"
-                      style="font-size: 11px"
                     />
                   </div>
 
                   <!-- Position / Action -->
                   <div>
-                    <label class="field-label" style="font-size: 10px; color: var(--text2)">🧍 Position & Pose</label>
-                    <div style="display: flex; gap: 6px; margin-bottom: 6px; align-items: center">
+                    <label class="field-label u-fs-xxs" style="color: var(--text2)">🧍 Position & Pose</label>
+                    <div class="u-flex u-gap-2 u-mb-2 u-center-y">
                       <input
                         type="range"
                         id="pb-position-weight"
@@ -2660,69 +3108,67 @@ You are My-LM, a helpful AI assistant.</textarea
                         value="1.55"
                         style="flex: 1; height: 20px"
                       />
-                      <span class="range-val" id="pb-position-weight-val" style="min-width: 32px; text-align: center; font-size: 10px">1.55</span>
+                      <span class="range-val u-fs-xxs" id="pb-position-weight-val" style="min-width: 32px; text-align: center">1.55</span>
                     </div>
-                    <div style="display: flex; gap: 4px; margin-bottom: 6px">
-                      <select class="field-select" id="pb-position-preset" style="flex: 1; font-size: 10px">
+                    <div class="u-flex u-gap-1 u-mb-2">
+                      <select class="field-select u-fs-xxs" id="pb-position-preset" style="flex: 1">
                         <option value="">— pose preset —</option>
                       </select>
                       <button
-                        class="btn btn-ghost btn-xs"
+                        class="btn btn-ghost btn-xs u-fs-xxs u-pad-btn-tight u-nowrap"
                         id="pb-position-append"
                         title="Append the selected pose to the text below"
-                        style="font-size: 10px; padding: 4px 8px; white-space: nowrap"
                       >+</button>
                       <button
-                        class="btn btn-ghost btn-xs"
+                        class="btn btn-ghost btn-xs u-fs-xxs u-pad-btn-tight u-nowrap"
                         id="pb-position-undo"
                         title="Undo the last appended position text"
-                        style="font-size: 10px; padding: 4px 8px; white-space: nowrap"
                         disabled
                       >↶</button>
                     </div>
                     <textarea
-                      class="field-textarea"
+                      class="field-textarea u-fs-xs"
                       id="pb-position"
                       rows="2"
                       placeholder="e.g. taking a mirror selfie while wearing the classic suit"
-                      style="resize: none; font-size: 11px"
+                      style="resize: none"
                     ></textarea>
                   </div>
 
                   <!-- Weights / Lighting -->
                   <div>
-                    <label class="field-label" style="font-size: 10px; color: var(--text2)">💎 Lighting & Style</label>
+                    <label class="field-label u-fs-xxs" style="color: var(--text2)">💎 Lighting & Style</label>
                     <textarea
-                      class="field-textarea"
+                      class="field-textarea u-fs-xs"
                       id="pb-weights"
                       rows="2"
                       placeholder="Soft natural indoor lighting, realistic skin texture…"
-                      style="resize: none; font-size: 11px"
+                      style="resize: none"
                     >Soft natural indoor lighting, realistic skin texture, flushed cheeks. sharp focus, intricate details, realistic anatomy, high resolution, depth of field</textarea
                     >
                   </div>
 
                   <!-- Preview -->
-                  <div style="background: var(--bg1); padding: 8px; border-radius: 4px; border-left: 2px solid var(--accent)">
-                    <div style="font-size: 10px; color: var(--text3); margin-bottom: 4px">📋 Preview</div>
-                    <div id="full-prompt-preview" style="font-size: 11px; color: var(--text1); line-height: 1.4"></div>
+                  <div class="u-p-2" style="background: var(--bg1); border-radius: 4px; border-left: 2px solid var(--accent)">
+                    <div class="u-fs-xxs u-mb-1" style="color: var(--text3)">📋 Preview</div>
+                    <div id="full-prompt-preview" class="u-fs-xs" style="color: var(--text1); line-height: 1.4"></div>
                   </div>
 
                   <!-- Describe Output -->
                   <div>
-                    <label class="field-label" style="font-size: 10px; color: var(--text2)">📝 Describe Output</label>
+                    <label class="field-label u-fs-xxs" style="color: var(--text2)">📝 Describe Output</label>
                     <textarea
-                      class="field-textarea"
+                      class="field-textarea u-fs-xxs"
                       id="pb-describe-output"
                       rows="3"
                       placeholder="Describe/Enhance output will appear here..."
-                      style="resize: none; font-size: 10px"
+                      style="resize: none"
                     ></textarea>
-                    <div style="display: flex; gap: 4px; margin-top: 6px">
-                      <button class="btn btn-ghost btn-xs" id="pb-describe-use-position" style="flex: 1; font-size: 10px">
+                    <div class="u-flex u-gap-1 u-mt-3">
+                      <button class="btn btn-ghost btn-xs u-fs-xxs" id="pb-describe-use-position" style="flex: 1">
                         → Position
                       </button>
-                      <button class="btn btn-ghost btn-xs" id="pb-describe-use-weights" style="flex: 1; font-size: 10px">
+                      <button class="btn btn-ghost btn-xs u-fs-xxs" id="pb-describe-use-weights" style="flex: 1">
                         → Weights
                       </button>
                     </div>
@@ -2730,8 +3176,8 @@ You are My-LM, a helpful AI assistant.</textarea
 
                   <!-- Negative Prompt -->
                   <div>
-                    <label class="field-label" style="font-size: 10px; color: var(--text2)">❌ Negative Prompt</label>
-                    <textarea class="field-textarea" id="neg-prompt" rows="2" style="resize: none; font-size: 11px">
+                    <label class="field-label u-fs-xxs" style="color: var(--text2)">❌ Negative Prompt</label>
+                    <textarea class="field-textarea u-fs-xs" id="neg-prompt" rows="2" style="resize: none">
 face asymmetry, eyes asymmetry, deformed eyes, open mouth, cartoon, painting, blurry, low quality</textarea
                     >
                   </div>
@@ -2740,12 +3186,12 @@ face asymmetry, eyes asymmetry, deformed eyes, open mouth, cartoon, painting, bl
 
               <!-- Settings Tab -->
               <div class="ribbon-content" data-tab="settings" style="display: none">
-                <div style="padding: 16px; display: flex; flex-direction: column; gap: 12px">
-                  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px">
+                <div class="u-p-4 u-flex u-col u-gap-4">
+                  <div class="u-grid-2 u-gap-4">
                     <!-- Steps -->
                     <div>
-                      <label class="field-label" style="font-size: 10px">Steps</label>
-                      <div class="range-row" style="display: flex; gap: 8px; align-items: center">
+                      <label class="field-label u-fs-xxs">Steps</label>
+                      <div class="range-row u-flex u-gap-3 u-center-y">
                         <input
                           type="range"
                           id="img-steps"
@@ -2755,14 +3201,14 @@ face asymmetry, eyes asymmetry, deformed eyes, open mouth, cartoon, painting, bl
                           value="22"
                           style="flex: 1"
                         />
-                        <span class="range-val" id="img-steps-val" style="min-width: 28px; font-size: 10px">22</span>
+                        <span class="range-val u-fs-xxs" id="img-steps-val" style="min-width: 28px">22</span>
                       </div>
                     </div>
 
                     <!-- CFG -->
                     <div>
-                      <label class="field-label" style="font-size: 10px">CFG</label>
-                      <div class="range-row" style="display: flex; gap: 8px; align-items: center">
+                      <label class="field-label u-fs-xxs">CFG</label>
+                      <div class="range-row u-flex u-gap-3 u-center-y">
                         <input
                           type="range"
                           id="img-cfg"
@@ -2772,16 +3218,16 @@ face asymmetry, eyes asymmetry, deformed eyes, open mouth, cartoon, painting, bl
                           value="7"
                           style="flex: 1"
                         />
-                        <span class="range-val" id="img-cfg-val" style="min-width: 28px; font-size: 10px">7.0</span>
+                        <span class="range-val u-fs-xxs" id="img-cfg-val" style="min-width: 28px">7.0</span>
                       </div>
                     </div>
                   </div>
 
-                  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px">
+                  <div class="u-grid-2 u-gap-4">
                     <!-- Width -->
                     <div>
-                      <label class="field-label" style="font-size: 10px">Width</label>
-                      <select class="field-select" id="img-width" style="font-size: 11px">
+                      <label class="field-label u-fs-xxs">Width</label>
+                      <select class="field-select u-fs-xs" id="img-width">
                         <option value="512">512</option>
                         <option value="768">768</option>
                         <option value="1024" selected>1024</option>
@@ -2790,8 +3236,8 @@ face asymmetry, eyes asymmetry, deformed eyes, open mouth, cartoon, painting, bl
 
                     <!-- Height -->
                     <div>
-                      <label class="field-label" style="font-size: 10px">Height</label>
-                      <select class="field-select" id="img-height" style="font-size: 11px">
+                      <label class="field-label u-fs-xxs">Height</label>
+                      <select class="field-select u-fs-xs" id="img-height">
                         <option value="512">512</option>
                         <option value="768">768</option>
                         <option value="1024" selected>1024</option>
@@ -2800,38 +3246,38 @@ face asymmetry, eyes asymmetry, deformed eyes, open mouth, cartoon, painting, bl
                   </div>
 
                   <!-- Checkboxes -->
-                  <div style="display: flex; flex-direction: column; gap: 8px">
-                    <label class="field-label" style="display: flex; align-items: center; gap: 6px; cursor: pointer; margin: 0; font-weight: normal">
+                  <div class="u-flex u-col u-gap-3">
+                    <label class="field-label u-label-check" style="font-weight: normal">
                       <input
                         type="checkbox"
                         id="img-upscale"
                         checked
                         style="accent-color: var(--accent); cursor: pointer"
                       />
-                      <span style="font-size: 11px">4× Upscale (4x-UltraSharp)</span>
+                      <span class="u-fs-xs">4× Upscale (4x-UltraSharp)</span>
                     </label>
-                    <label class="field-label" style="display: flex; align-items: center; gap: 6px; cursor: pointer; margin: 0; font-weight: normal">
+                    <label class="field-label u-label-check" style="font-weight: normal">
                       <input
                         type="checkbox"
                         id="img-face-fix"
                         style="accent-color: var(--accent); cursor: pointer"
                       />
-                      <span style="font-size: 11px">Face Fix (ADetailer-style)</span>
+                      <span class="u-fs-xs">Face Fix (ADetailer-style)</span>
                     </label>
-                    <label class="field-label" style="display: flex; align-items: center; gap: 6px; cursor: pointer; margin: 0; font-weight: normal">
+                    <label class="field-label u-label-check" style="font-weight: normal">
                       <input
                         type="checkbox"
                         id="img-nsfw-seg"
                         style="accent-color: var(--accent); cursor: pointer"
                       />
-                      <span style="font-size: 11px">NSFW Segmentation (save masks)</span>
+                      <span class="u-fs-xs">NSFW Segmentation (save masks)</span>
                     </label>
                   </div>
 
                   <!-- Face Fix Strength -->
                   <div>
-                    <label class="field-label" style="font-size: 10px">Face Fix Strength</label>
-                    <div class="range-row" style="display: flex; gap: 8px; align-items: center">
+                    <label class="field-label u-fs-xxs">Face Fix Strength</label>
+                    <div class="range-row u-flex u-gap-3 u-center-y">
                       <input
                         type="range"
                         id="img-face-fix-strength"
@@ -2841,7 +3287,7 @@ face asymmetry, eyes asymmetry, deformed eyes, open mouth, cartoon, painting, bl
                         value="0.45"
                         style="flex: 1"
                       />
-                      <span class="range-val" id="img-face-fix-strength-val" style="min-width: 32px; font-size: 10px">0.45</span>
+                      <span class="range-val u-fs-xxs" id="img-face-fix-strength-val" style="min-width: 32px">0.45</span>
                     </div>
                   </div>
                 </div>
@@ -2849,30 +3295,32 @@ face asymmetry, eyes asymmetry, deformed eyes, open mouth, cartoon, painting, bl
 
               <!-- Advanced Tab -->
               <div class="ribbon-content" data-tab="advanced" style="display: none">
-                <div style="padding: 16px; display: flex; flex-direction: column; gap: 12px">
-                  <label class="field-label" style="display: flex; align-items: center; gap: 6px; cursor: pointer; margin: 0">
+                <div class="u-p-4 u-flex u-col u-gap-4">
+                  <label class="field-label u-label-check">
                     <input
                       type="checkbox"
                       id="img-face-swap"
                       style="accent-color: var(--accent); cursor: pointer"
                     />
-                    <span style="font-size: 11px">Face Swap (replace with uploaded face)</span>
+                    <span class="u-fs-xs">Face Swap (replace with uploaded face)</span>
                   </label>
 
                   <div
                     id="face-swap-upload"
-                    style="display: flex; gap: 8px; align-items: center; padding: 8px; background: var(--bg1); border-radius: 4px"
+                    class="u-flex u-gap-3 u-center-y u-p-2"
+                    style="background: var(--bg1); border-radius: 4px"
                   >
                     <button
-                      class="btn btn-ghost btn-sm"
+                      class="btn btn-ghost btn-sm u-fs-xxs"
                       id="face-swap-browse"
-                      style="font-size: 10px; white-space: nowrap"
+                      style="white-space: nowrap"
                     >
                       📁 Browse
                     </button>
                     <span
                       id="face-swap-filename"
-                      style="font-size: 10px; color: var(--text3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1"
+                      class="u-fs-xxs"
+                      style="color: var(--text3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1"
                       title=""
                     >
                       No file selected
@@ -2883,44 +3331,43 @@ face asymmetry, eyes asymmetry, deformed eyes, open mouth, cartoon, painting, bl
                     />
                   </div>
 
-                  <div style="background: var(--bg1); padding: 8px; border-radius: 4px; border-left: 2px solid var(--accent)">
-                    <div style="font-size: 10px; color: var(--text3)">💡 Tip: Advanced options like face swap are experimental and may require a restart if the model changes.</div>
+                  <div class="u-p-2" style="background: var(--bg1); border-radius: 4px; border-left: 2px solid var(--accent)">
+                    <div class="u-fs-xxs" style="color: var(--text3)">💡 Tip: Advanced options like face swap are experimental and may require a restart if the model changes.</div>
                   </div>
                 </div>
               </div>
 
               <!-- Saved Tab -->
               <div class="ribbon-content" data-tab="saved" style="display: none">
-                <div style="padding: 16px; display: flex; flex-direction: column; gap: 12px">
+                <div class="u-p-4 u-flex u-col u-gap-4">
                   <div>
-                    <label class="field-label" style="font-size: 10px; margin-bottom: 6px; display: flex; justify-content: space-between">
+                    <label class="field-label u-fs-xxs u-mb-2 u-flex" style="justify-content: space-between">
                       <span>Saved Prompts</span>
                       <button
-                        class="btn btn-ghost btn-xs"
+                        class="btn btn-ghost btn-xs u-fs-micro u-pad-btn-tight"
                         id="save-prompt-btn"
-                        style="padding: 2px 8px; font-size: 9px"
                         title="Save current prompt"
                       >
                         + Save
                       </button>
                     </label>
-                    <select class="field-select" id="saved-prompts-select" style="font-size: 11px">
+                    <select class="field-select u-fs-xs" id="saved-prompts-select">
                       <option value="">— select a saved prompt —</option>
                     </select>
                   </div>
 
-                  <div style="display: flex; gap: 6px">
+                  <div class="u-flex u-gap-2">
                     <button
-                      class="btn btn-ghost btn-sm"
+                      class="btn btn-ghost btn-sm u-fs-xs"
                       id="load-prompt-btn"
-                      style="flex: 1; font-size: 11px"
+                      style="flex: 1"
                     >
                       Load
                     </button>
                     <button
-                      class="btn btn-ghost btn-sm"
+                      class="btn btn-ghost btn-sm u-fs-xs"
                       id="delete-prompt-btn"
-                      style="flex: 1; font-size: 11px"
+                      style="flex: 1"
                     >
                       Delete
                     </button>
@@ -2930,7 +3377,7 @@ face asymmetry, eyes asymmetry, deformed eyes, open mouth, cartoon, painting, bl
             </div>
 
             <!-- Generate Button Bar (fixed bottom) -->
-            <div class="generate-actions" style="padding: 12px; background: var(--bg1); border-top: 1px solid var(--border); display: flex; gap: 8px; position: sticky; bottom: 0">
+            <div class="generate-actions u-p-3 u-flex u-gap-3" style="background: var(--bg1); border-top: 1px solid var(--border); position: sticky; bottom: 0">
               <button
                 class="btn btn-primary"
                 id="generate-btn"
@@ -2940,9 +3387,9 @@ face asymmetry, eyes asymmetry, deformed eyes, open mouth, cartoon, painting, bl
                 🚀 Generate
               </button>
               <button
-                class="btn btn-danger"
+                class="btn btn-danger u-pad-btn-inline"
                 id="generate-stop-btn"
-                style="display: none; padding: 0 16px"
+                style="display: none"
               >
                 Stop
               </button>
@@ -2954,7 +3401,7 @@ face asymmetry, eyes asymmetry, deformed eyes, open mouth, cartoon, painting, bl
         <div class="screen" id="screen-media">
           <div class="media-header">
             <h2>🖼️ Media</h2>
-            <div style="display: flex; gap: 6px">
+            <div class="u-flex u-gap-2">
               <button class="btn btn-ghost btn-sm" id="media-new-folder-btn">
                 + Folder
               </button>
@@ -3009,8 +3456,8 @@ face asymmetry, eyes asymmetry, deformed eyes, open mouth, cartoon, painting, bl
                 placeholder="Goodreads username or ID (e.g. 64412103-josh)"
               />
             </div>
-            <div class="row" style="align-items: center; gap: 14px">
-              <label style="font-size: 11px; color: var(--text2)">
+            <div class="row u-center-y u-gap-5">
+              <label class="u-fs-xs" style="color: var(--text2)">
                 Limit
                 <input
                   type="number"
@@ -3018,15 +3465,16 @@ face asymmetry, eyes asymmetry, deformed eyes, open mouth, cartoon, painting, bl
                   min="3"
                   max="30"
                   value="10"
-                  style="width: 60px; margin-left: 6px"
-                  class="field-input"
+                  class="field-input u-ml-2"
+                  style="width: 60px"
                 />
               </label>
-              <label style="font-size: 11px; color: var(--text2)">
+              <label class="u-fs-xs" style="color: var(--text2)">
                 <input
                   type="checkbox"
                   id="books-use-llm"
-                  style="accent-color: var(--accent); margin-right: 4px"
+                  class="u-mr-1"
+                  style="accent-color: var(--accent)"
                 />
                 Use local LLM to explain picks
               </label>
@@ -3039,7 +3487,7 @@ face asymmetry, eyes asymmetry, deformed eyes, open mouth, cartoon, painting, bl
               <button class="btn btn-primary btn-sm" id="books-query-btn" disabled>
                 🔍 Recommend
               </button>
-              <button class="btn btn-ghost btn-sm" id="books-stop-btn" style="display: none">
+                <button class="btn btn-ghost btn-sm" id="books-stop-btn" style="display: none">
                 Stop
               </button>
             </div>
@@ -3049,7 +3497,7 @@ face asymmetry, eyes asymmetry, deformed eyes, open mouth, cartoon, painting, bl
             <div class="books-panel">
               <h3>Candidates</h3>
               <div id="books-candidates-list">
-                <div style="color: var(--text3); font-size: 12px; padding: 20px 0">
+                <div class="u-fs-sm u-py-5" style="color: var(--text3)">
                   Run a query to see matching books.
                 </div>
               </div>
@@ -3057,7 +3505,7 @@ face asymmetry, eyes asymmetry, deformed eyes, open mouth, cartoon, painting, bl
             <div class="books-panel">
               <h3>LLM Recommendation</h3>
               <div id="books-llm-output">
-                <span style="color: var(--text3); font-size: 12px">
+                <span class="u-fs-sm" style="color: var(--text3)">
                   Enable "Use local LLM" and run a query to get personalized picks.
                 </span>
               </div>
@@ -3128,7 +3576,8 @@ face asymmetry, eyes asymmetry, deformed eyes, open mouth, cartoon, painting, bl
                   type="checkbox"
                   id="train-use-4bit"
                   checked
-                  style="accent-color: var(--accent); margin-right: 4px"
+                  class="u-mr-1"
+                  style="accent-color: var(--accent)"
                 />
                 4-bit quantization (NF4) — required for 6 GB VRAM
               </label>
@@ -3309,15 +3758,34 @@ face asymmetry, eyes asymmetry, deformed eyes, open mouth, cartoon, painting, bl
 
         <!-- ── GPU Screen ── -->
         <div class="screen" id="screen-gpu">
-          <div class="gpu-header">
-            <h2>🖥️ GPU Information</h2>
-            <div class="gpu-actions">
-              <button class="btn btn-ghost btn-sm" id="gpu-clear-thumb-cache-btn">
-                🧹 Clear Thumb Cache
-              </button>
-              <button class="btn btn-ghost btn-sm" id="gpu-refresh-btn">
-                ⟳ Refresh
-              </button>
+          <div class="dashboard-hero">
+            <div class="hero-title-row">
+              <div class="hero-title">
+                <h2>🖥️ GPU Command Center</h2>
+                <p>Live hardware telemetry, benchmark workflows, and performance history.</p>
+              </div>
+              <div class="hero-actions">
+                <button class="btn btn-ghost btn-sm" id="gpu-clear-thumb-cache-btn">
+                  🧹 Clear Thumb Cache
+                </button>
+                <button class="btn btn-ghost btn-sm" id="gpu-refresh-btn">
+                  ⟳ Refresh
+                </button>
+              </div>
+            </div>
+            <div class="hero-kpis">
+              <div class="hero-kpi">
+                <span class="kpi-label">Telemetry</span>
+                <span class="kpi-value">PyTorch + NVIDIA-SMI</span>
+              </div>
+              <div class="hero-kpi">
+                <span class="kpi-label">Benchmarks</span>
+                <span class="kpi-value">Agent Latency + Reliability</span>
+              </div>
+              <div class="hero-kpi">
+                <span class="kpi-label">Scope</span>
+                <span class="kpi-value">Local Runtime Diagnostics</span>
+              </div>
             </div>
           </div>
           <div id="gpu-content">
@@ -3444,7 +3912,7 @@ face asymmetry, eyes asymmetry, deformed eyes, open mouth, cartoon, painting, bl
               <span class="catalog-badge" id="bench-results-dir-badge"></span>
             </div>
             <div id="bench-results-list">
-              <div class="empty-state" style="padding: 12px">
+              <div class="empty-state u-p-3">
                 <p>No benchmarks yet. Run one to see results here.</p>
               </div>
             </div>
@@ -3455,44 +3923,65 @@ face asymmetry, eyes asymmetry, deformed eyes, open mouth, cartoon, painting, bl
 
         <!-- ── Models Screen ── -->
         <div class="screen" id="screen-models">
-          <div class="models-header">
-            <h2>📦 Models</h2>
-            <button class="btn btn-ghost btn-sm" id="run-diagnostics-btn">
-              🩺 Run Diagnostics
-            </button>
+          <div class="dashboard-hero">
+            <div class="hero-title-row">
+              <div class="hero-title">
+                <h2>📦 Model Vault</h2>
+                <p>Pick active models, browse curated catalogs, and download from Hugging Face.</p>
+              </div>
+              <div class="hero-actions">
+                <button class="btn btn-ghost btn-sm" id="run-diagnostics-btn">
+                  🩺 Run Diagnostics
+                </button>
+              </div>
+            </div>
+            <div class="hero-kpis">
+              <div class="hero-kpi">
+                <span class="kpi-label">Model Roles</span>
+                <span class="kpi-value">Chat, Image, Upscale, Tools</span>
+              </div>
+              <div class="hero-kpi">
+                <span class="kpi-label">Download Source</span>
+                <span class="kpi-value">Hugging Face Hub</span>
+              </div>
+              <div class="hero-kpi">
+                <span class="kpi-label">Selection Mode</span>
+                <span class="kpi-value">One-click Active Switch</span>
+              </div>
+            </div>
           </div>
 
           <!-- ── Quick Model Selector ── -->
-          <div style="margin-bottom: 24px; padding: 16px; background: var(--bg2); border-radius: 8px; border: 1px solid var(--border)">
-            <h3 style="margin: 0 0 16px 0; font-size: 14px; font-weight: 600">⚡ Quick Model Selector</h3>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px">
+          <div class="section-shell u-mb-5 u-p-4">
+            <h3 class="u-fs-md u-mb-4 u-mt-0" style="font-weight: 600">⚡ Quick Model Selector</h3>
+            <div class="u-grid-2 u-gap-6">
               <!-- LLM Model Selector -->
               <div>
-                <label style="display: block; font-size: 12px; font-weight: 600; color: var(--text2); margin-bottom: 8px">
+                <label class="u-fs-sm u-mb-2" style="display: block; font-weight: 600; color: var(--text2)">
                   🧠 Chat Model (LLM)
                 </label>
-                <select class="field-select" id="model-selector-llm" style="width: 100%; margin-bottom: 8px">
+                <select class="field-select u-w-full u-mb-2" id="model-selector-llm">
                   <option value="">-- Loading models --</option>
                 </select>
-                <div style="font-size: 11px; color: var(--text3); margin-bottom: 8px" id="model-info-llm">
+                <div class="u-fs-xs u-mb-2" style="color: var(--text3)" id="model-info-llm">
                   Current: qwen3.5-2b
                 </div>
-                <button class="btn btn-sm btn-primary" id="model-set-llm-btn" style="width: 100%">
+                <button class="btn btn-sm btn-primary u-w-full" id="model-set-llm-btn">
                   Set as Active
                 </button>
               </div>
               <!-- Image Model Selector -->
               <div>
-                <label style="display: block; font-size: 12px; font-weight: 600; color: var(--text2); margin-bottom: 8px">
+                <label class="u-fs-sm u-mb-2" style="display: block; font-weight: 600; color: var(--text2)">
                   🎨 Image Model
                 </label>
-                <select class="field-select" id="model-selector-image" style="width: 100%; margin-bottom: 8px">
+                <select class="field-select u-w-full u-mb-2" id="model-selector-image">
                   <option value="">-- Loading models --</option>
                 </select>
-                <div style="font-size: 11px; color: var(--text3); margin-bottom: 8px" id="model-info-image">
+                <div class="u-fs-xs u-mb-2" style="color: var(--text3)" id="model-info-image">
                   Current: realvisxl-v4
                 </div>
-                <button class="btn btn-sm btn-primary" id="model-set-image-btn" style="width: 100%">
+                <button class="btn btn-sm btn-primary u-w-full" id="model-set-image-btn">
                   Set as Active
                 </button>
               </div>
@@ -3500,28 +3989,29 @@ face asymmetry, eyes asymmetry, deformed eyes, open mouth, cartoon, painting, bl
           </div>
 
           <!-- ── Model Explorer ── -->
-          <div style="margin: 24px 0">
-            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px">
-              <h3 style="margin: 0; font-size: 14px; font-weight: 600; color: var(--text1)">📂 Available Models</h3>
+          <div class="section-shell u-mt-5 u-mb-5">
+            <div class="section-title-row u-mb-4">
+              <h3 class="u-fs-md" style="margin: 0; font-weight: 600; color: var(--text1)">📂 Available Models</h3>
               <button class="btn btn-ghost btn-sm" id="models-refresh-btn">
                 ⟳ Refresh
               </button>
             </div>
-            <div id="models-list" style="background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden"></div>
+            <div id="models-list" style="background: rgba(7, 16, 28, 0.58); border: 1px solid rgba(156, 191, 231, 0.2); border-radius: 12px; overflow: hidden"></div>
           </div>
 
-          <div style="margin-top: 24px" class="catalog-section">
+          <div class="catalog-section u-mt-5">
             <div class="catalog-header">
               <h3>✨ Model Catalog</h3>
               <div class="catalog-controls">
                 <span id="catalog-vram-badge" class="catalog-badge">
                   Detecting GPU…
                 </span>
-                <label style="font-size: 11px; color: var(--text2)">
+                <label class="u-fs-xs" style="color: var(--text2)">
                   <input
                     type="checkbox"
                     id="catalog-show-all"
-                    style="accent-color: var(--accent); margin-right: 4px"
+                    class="u-mr-1"
+                    style="accent-color: var(--accent)"
                   />
                   Show all (including models too large for your GPU)
                 </label>
@@ -3543,7 +4033,7 @@ face asymmetry, eyes asymmetry, deformed eyes, open mouth, cartoon, painting, bl
             <div id="catalog-grid"></div>
           </div>
 
-          <div style="margin-top: 20px">
+          <div class="u-mt-5">
             <div class="download-form">
               <h3>Download from Hugging Face</h3>
               <div class="form-row">
@@ -3583,7 +4073,7 @@ face asymmetry, eyes asymmetry, deformed eyes, open mouth, cartoon, painting, bl
         <!-- ── Settings Screen ── -->
         <div class="screen" id="screen-settings">
           <div style="max-width: 640px">
-            <h2 style="font-size: 20px; font-weight: 700; margin-bottom: 18px">
+            <h2 class="u-fs-2xl u-mb-4" style="font-weight: 700">
               ⚙️ Settings
             </h2>
 
@@ -3600,18 +4090,17 @@ face asymmetry, eyes asymmetry, deformed eyes, open mouth, cartoon, painting, bl
                 id="cfg-mongo-uri"
                 type="password"
                 placeholder="mongodb+srv://user:pass@cluster.mongodb.net/?appName=..."
-                style="font-family: 'Courier New', monospace; font-size: 11px"
+                style="font-family: 'Courier New', monospace"
               />
-              <div style="display: flex; gap: 6px; margin-top: 4px">
+              <div class="u-flex u-gap-2 u-mt-1">
                 <button
-                  class="btn btn-ghost btn-sm"
+                  class="btn btn-ghost btn-sm u-fs-xxs"
                   id="cfg-mongo-toggle"
-                  style="font-size: 10px"
                 >
                   Show
                 </button>
               </div>
-              <label class="field-label" style="margin-top: 10px"
+              <label class="field-label u-mt-3"
                 >Database Name</label
               >
               <input
@@ -3620,7 +4109,7 @@ face asymmetry, eyes asymmetry, deformed eyes, open mouth, cartoon, painting, bl
                 type="text"
                 placeholder="bookmind"
               />
-              <label class="field-label" style="margin-top: 10px"
+              <label class="field-label u-mt-3"
                 >Embedding Model</label
               >
               <input
@@ -3629,7 +4118,7 @@ face asymmetry, eyes asymmetry, deformed eyes, open mouth, cartoon, painting, bl
                 type="text"
                 placeholder="sentence-transformers/all-MiniLM-L6-v2"
               />
-              <label class="field-label" style="margin-top: 10px"
+              <label class="field-label u-mt-3"
                 >Vector Search Index Name</label
               >
               <input
@@ -3651,13 +4140,13 @@ face asymmetry, eyes asymmetry, deformed eyes, open mouth, cartoon, painting, bl
                 </button>
                 <span
                   id="cfg-mongo-status"
-                  style="font-size: 11px; color: var(--text3)"
+                  class="u-fs-xs"
+                  style="color: var(--text3)"
                 ></span>
               </div>
               <div
                 id="cfg-mongo-result"
                 style="
-                  font-size: 11px;
                   color: var(--text2);
                   margin-top: 8px;
                   display: none;
@@ -3667,10 +4156,11 @@ face asymmetry, eyes asymmetry, deformed eyes, open mouth, cartoon, painting, bl
                   padding: 10px;
                   font-family: 'Courier New', monospace;
                 "
+                class="u-fs-xs"
               ></div>
             </div>
 
-            <div class="settings-card" style="margin-top: 16px">
+            <div class="settings-card u-mt-4">
               <h3>Defaults</h3>
               <label class="field-label">Default Goodreads User</label>
               <input
@@ -3681,13 +4171,14 @@ face asymmetry, eyes asymmetry, deformed eyes, open mouth, cartoon, painting, bl
               />
             </div>
 
-            <div style="margin-top: 18px; display: flex; gap: 10px">
+            <div class="u-mt-4 u-flex u-gap-3">
               <button class="btn btn-primary" id="cfg-save-btn">
                 Save Settings
               </button>
               <span
                 id="cfg-save-status"
-                style="font-size: 12px; color: var(--success); align-self: center"
+                class="u-fs-sm"
+                style="color: var(--success); align-self: center"
               ></span>
             </div>
           </div>
