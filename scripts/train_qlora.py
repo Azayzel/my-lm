@@ -23,12 +23,15 @@ from transformers import (
 
 
 def parse_args() -> argparse.Namespace:
+    # Repo root is one level above this script
+    _repo = Path(__file__).resolve().parent.parent
+
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    p.add_argument("--model-id", default="../models/qwen3.5-2b",
+    p.add_argument("--model-id", default=str(_repo / "models" / "qwen3.5-2b"),
                    help="HF model id or local path")
-    p.add_argument("--data", type=Path, default=Path("../datasets/train.jsonl"),
+    p.add_argument("--data", type=Path, default=_repo / "datasets" / "train.jsonl",
                    help="Training JSONL ({\"messages\":[...]} per line)")
-    p.add_argument("--output-dir", type=Path, default=Path("../models/My-lm-lora"))
+    p.add_argument("--output-dir", type=Path, default=_repo / "models" / "My-lm-lora")
     p.add_argument("--epochs", type=float, default=3.0)
     p.add_argument("--lr", type=float, default=2e-4)
     p.add_argument("--max-length", type=int, default=2048)
@@ -52,6 +55,13 @@ def main() -> int:
     if not args.data.exists():
         raise SystemExit(f"data file not found: {args.data}")
 
+    # Resolve model_id: if it looks like a local path (contains / or \, or starts
+    # with . / ~), convert to an absolute path so transformers doesn't try to
+    # treat it as a HuggingFace repo id.
+    model_id: str = args.model_id
+    if any(c in model_id for c in ("/", "\\")) or model_id.startswith((".", "~")):
+        model_id = str(Path(model_id).resolve())
+
     bnb_config = BitsAndBytesConfig(
         load_in_4bit=True,
         bnb_4bit_quant_type="nf4",
@@ -59,11 +69,11 @@ def main() -> int:
         bnb_4bit_use_double_quant=True,
     )
 
-    tokenizer = AutoTokenizer.from_pretrained(args.model_id)
+    tokenizer = AutoTokenizer.from_pretrained(model_id)
     tokenizer.pad_token = tokenizer.eos_token
 
     model = AutoModelForCausalLM.from_pretrained(
-        args.model_id,
+        model_id,
         quantization_config=bnb_config,
         device_map="auto",
     )
