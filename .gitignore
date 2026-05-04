@@ -21,7 +21,7 @@ build/
 release/
 *.log
 npm-debug.log*
-
+PageTurnr.ai/**/*
 # Local model weights and runtime artefacts (never commit — multi-GB)
 models/
 outputs/

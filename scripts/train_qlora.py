@@ -39,6 +39,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--lora-r", type=int, default=16)
     p.add_argument("--lora-alpha", type=int, default=32)
     p.add_argument("--lora-dropout", type=float, default=0.05)
+    p.add_argument("--val-data", type=Path, default=None,
+                   help="Validation JSONL for eval_loss (e.g. datasets/books/val.jsonl)")
     return p.parse_args()
 
 
@@ -87,6 +89,12 @@ def main() -> int:
 
     dataset = dataset.map(tokenize, remove_columns=dataset.column_names)
 
+    val_dataset = None
+    if args.val_data and args.val_data.exists():
+        val_dataset = load_dataset("json", data_files=str(args.val_data), split="train")
+        val_dataset = val_dataset.map(tokenize, remove_columns=val_dataset.column_names)
+
+    do_eval = val_dataset is not None
     targs = TrainingArguments(
         output_dir=str(args.output_dir),
         num_train_epochs=args.epochs,
@@ -96,10 +104,16 @@ def main() -> int:
         fp16=True,
         logging_steps=10,
         save_strategy="epoch",
+        evaluation_strategy="epoch" if do_eval else "no",
         optim="paged_adamw_8bit",
     )
 
-    trainer = Trainer(model=model, args=targs, train_dataset=dataset)
+    trainer = Trainer(
+        model=model,
+        args=targs,
+        train_dataset=dataset,
+        eval_dataset=val_dataset,
+    )
     trainer.train()
     model.save_pretrained(str(args.output_dir))
     print(f"saved adapter to {args.output_dir}")
