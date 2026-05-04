@@ -107,6 +107,20 @@ def _parse_html_shelf(html: str) -> list[dict[str, Any]]:
     return out
 
 
+_HTML_TAG_RE = re.compile(r"<[^>]+>")
+_HTML_ENTITIES: dict[str, str] = {
+    "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": '"', "&#39;": "'", "&nbsp;": " ",
+}
+
+
+def _strip_html(raw: str) -> str:
+    """Strip HTML tags and decode common entities from a review string."""
+    text = _HTML_TAG_RE.sub(" ", raw)
+    for ent, char in _HTML_ENTITIES.items():
+        text = text.replace(ent, char)
+    return " ".join(text.split())
+
+
 def _parse_rss_shelf(xml_text: str) -> list[dict[str, Any]]:
     try:
         root = ET.fromstring(xml_text)
@@ -122,13 +136,17 @@ def _parse_rss_shelf(xml_text: str) -> list[dict[str, Any]]:
             rating = int(rating_s)
         except ValueError:
             rating = 0
+        review_raw = (item.findtext("user_review") or "").strip()
+        review = _strip_html(review_raw) if review_raw else ""
+
         if title:
             out.append(
                 {
                     "title": title,
                     "author": author,
-                    "rating": rating,
+                    "rating": int(rating),
                     "shelf": "read",
+                    "review": review,
                 }
             )
     return out

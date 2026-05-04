@@ -12,7 +12,7 @@ import argparse
 from pathlib import Path
 
 from datasets import load_dataset
-from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
+from peft import LoraConfig, PeftModel, get_peft_model, prepare_model_for_kbit_training
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
@@ -41,6 +41,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--lora-dropout", type=float, default=0.05)
     p.add_argument("--val-data", type=Path, default=None,
                    help="Validation JSONL for eval_loss (e.g. datasets/books/val.jsonl)")
+    p.add_argument("--resume-from-lora", type=Path, default=None,
+                   help="Stage 2: load an existing LoRA adapter dir and continue fine-tuning it")
     return p.parse_args()
 
 
@@ -67,15 +69,19 @@ def main() -> int:
     )
     model = prepare_model_for_kbit_training(model)
 
-    lora_config = LoraConfig(
-        r=args.lora_r,
-        lora_alpha=args.lora_alpha,
-        target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
-        lora_dropout=args.lora_dropout,
-        bias="none",
-        task_type="CAUSAL_LM",
-    )
-    model = get_peft_model(model, lora_config)
+    if args.resume_from_lora and args.resume_from_lora.exists():
+        print(f"[Stage 2] Loading LoRA adapter from {args.resume_from_lora}")
+        model = PeftModel.from_pretrained(model, str(args.resume_from_lora), is_trainable=True)
+    else:
+        lora_config = LoraConfig(
+            r=args.lora_r,
+            lora_alpha=args.lora_alpha,
+            target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
+            lora_dropout=args.lora_dropout,
+            bias="none",
+            task_type="CAUSAL_LM",
+        )
+        model = get_peft_model(model, lora_config)
     model.print_trainable_parameters()
 
     dataset = load_dataset("json", data_files=str(args.data), split="train")

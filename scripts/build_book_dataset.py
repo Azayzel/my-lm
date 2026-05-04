@@ -513,6 +513,145 @@ def make_want_to_read_validation(
     return examples
 
 
+# ─── Review-grounded generators ───────────────────────────────────────────────
+
+
+def _extract_review_highlight(review: str) -> str:
+    """Return the first meaningful sentence of a review (≤150 chars)."""
+    for sent in review.split("."):
+        s = sent.strip()
+        if len(s) > 20:
+            return s[:150]
+    return review[:150]
+
+
+def _infer_reading_values(rating: int, review: str, user: dict) -> str:
+    """Infer taste values from rating + review text."""
+    r = review.lower()
+    values: list[str] = []
+    if any(w in r for w in ["character", "protagonist", "narrator", "cast"]):
+        values.append("strong characterization")
+    if any(w in r for w in ["world", "setting", "atmosphere", "immersive", "world-building"]):
+        values.append("immersive world-building")
+    if any(w in r for w in ["prose", "writing", "style", "language", "beautifully written"]):
+        values.append("high-quality prose")
+    if any(w in r for w in ["plot", "pacing", "page-turner", "couldn't put", "couldn't stop"]):
+        values.append("propulsive plotting")
+    if any(w in r for w in ["emotional", "heart", "cry", "moved", "touching", "devastating"]):
+        values.append("emotional resonance")
+    if not values:
+        values = [f"the qualities that make {user['favorite_genres'][0]} titles work for you"]
+    return " and ".join(values[:3])
+
+
+def make_review_text_training(
+    user: dict,
+    read_books: list[dict],
+) -> list[dict[str, Any]]:
+    """High-quality training examples grounded in the user's actual review text.
+
+    Goodreads RSS includes ``user_review`` — real words the user wrote about
+    why they loved or hated a book. This is the richest taste signal we have.
+    """
+    examples: list[dict[str, Any]] = []
+    reviewed = [b for b in read_books if (b.get("review") or "").strip() and len(b.get("review", "")) > 40]
+    if not reviewed:
+        return []
+
+    for book in reviewed:
+        rating = book.get("rating", 0)
+        review = book["review"][:400]
+        title = book.get("title") or "this book"
+        stars = f"{rating}★" if rating else "unrated"
+        genres_str = ", ".join(user["favorite_genres"][:2])
+        highlight = _extract_review_highlight(review)
+        values = _infer_reading_values(rating, review, user)
+
+        # Example 1: "What does this review tell you about my taste?"
+        examples.append(
+            {
+                "messages": [
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {
+                        "role": "user",
+                        "content": (
+                            f"I rated '{title}' {stars} and wrote: \"{review}\"\n\n"
+                            f"My favourite genres are {genres_str}. "
+                            "What does this review tell you about what I look for in books?"
+                        ),
+                    },
+                    {
+                        "role": "assistant",
+                        "content": (
+                            f"Your review of '{title}' ({stars}) gives me clear taste signals. "
+                            f"You highlight: \"{highlight}\" — which tells me you prize {values}. "
+                            f"Combined with your {genres_str} preferences and a {user['avg_rating']}★ average, "
+                            f"I'll weight future recommendations heavily toward books that deliver on those fronts. "
+                            f"{user['notes']}"
+                        ),
+                    },
+                ]
+            }
+        )
+
+        # Example 2: loved books → find something similar grounded in review
+        if rating >= 4:
+            examples.append(
+                {
+                    "messages": [
+                        {"role": "system", "content": SYSTEM_PROMPT},
+                        {
+                            "role": "user",
+                            "content": (
+                                f"I loved '{title}' ({stars}) and wrote: \"{review[:200]}\"\n\n"
+                                "Find me something with the same feel."
+                            ),
+                        },
+                        {
+                            "role": "assistant",
+                            "content": (
+                                f"Based on what resonated with you in '{title}' — {values} — "
+                                f"I'd look for {genres_str} titles that share those qualities. "
+                                f"Your note about \"{highlight}\" is a particularly strong signal: "
+                                "books that deliver on that same dimension are where I'd start."
+                            ),
+                        },
+                    ]
+                }
+            )
+
+        # Example 3: low-rated → what to avoid
+        if rating <= 2:
+            examples.append(
+                {
+                    "messages": [
+                        {"role": "system", "content": SYSTEM_PROMPT},
+                        {
+                            "role": "user",
+                            "content": (
+                                f"I only gave '{title}' {stars} and wrote: \"{review[:200]}\"\n\n"
+                                "What should you avoid recommending to me?"
+                            ),
+                        },
+                        {
+                            "role": "assistant",
+                            "content": (
+                                f"Noted — '{title}' ({stars}) is useful negative signal. "
+                                f"From your review: \"{highlight}\". "
+                                "I'll steer away from books that share those characteristics. "
+                                f"Given your love of {genres_str}, the issue seems to be "
+                                f"{'pacing and execution' if 'slow' in (review.lower()) else 'a mismatch with your thematic preferences'} "
+                                "rather than genre itself — so I'll stay within your preferred territory while "
+                                "filtering for better alignment on the qualities that matter to you."
+                            ),
+                        },
+                    ]
+                }
+            )
+
+    return examples
+
+
 # ─── OL-specific generators ────────────────────────────────────────────────────
 
 # Module-level rng for OL generators (seeded deterministically)
@@ -825,19 +964,24 @@ def main() -> None:
         print(f"  rank_candidates: {len(exs)}")
         all_examples.extend(exs)
 
-        # 8. Open Library subject-enriched recommendations
+        # 8. Review-grounded training (uses actual review text from RSS)
+        exs = make_review_text_training(user, read_books)
+        print(f"  review_text_training: {len(exs)}")
+        all_examples.extend(exs)
+
+        # 9. Open Library subject-enriched recommendations
         ol_catalog = ol_genre_catalog.get(user["name"], [])
         exs = make_ol_subject_enriched_recs(user, read_books, ol_catalog)
         print(f"  ol_subject_enriched_recs: {len(exs)}")
         all_examples.extend(exs)
 
-        # 9. Open Library taste profile (subject-aware)
+        # 10. Open Library taste profile (subject-aware)
         ol_read = (ol_shelf_data.get(user["name"]) or {}).get("read", [])
         exs = make_ol_enriched_taste_profile(user, ol_read)
         print(f"  ol_enriched_taste_profile: {len(exs)}")
         all_examples.extend(exs)
 
-    # 10. Cross-user comparison
+    # 11. Cross-user comparison
     exs = make_cross_user_comparison(USERS, all_read_books)
     print(f"\ncross_user_comparison: {len(exs)}")
     all_examples.extend(exs)
