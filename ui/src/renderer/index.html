@@ -1422,9 +1422,6 @@
         white-space: pre-wrap;
       }
 
-      /* Benchmark sub-sections inside GPU screen */
-      .bench-section {
-
       /* ── GPU Sparklines ── */
       .gpu-sparklines {
         display: flex;
@@ -1968,21 +1965,22 @@
       /* ── Books (BookMind RAG) screen ────────────────────────────── */
       #screen-books {
         flex-direction: column;
-        padding: 40px 48px;
-        overflow-y: auto;
-        overflow-x: hidden;
-        gap: 24px;
-        height: 100%;
+        padding: 40px 48px 0;
+        overflow: hidden;
+        gap: 0;
+        min-height: 0;
         box-sizing: border-box;
       }
       #screen-books h2 {
         font-size: 20px;
         font-weight: 700;
         letter-spacing: 0.3px;
+        flex-shrink: 0;
       }
       #screen-books .hint {
         color: var(--text3);
         font-size: 12px;
+        flex-shrink: 0;
       }
       .books-controls {
         background: var(--bg2);
@@ -1992,6 +1990,8 @@
         display: flex;
         flex-direction: column;
         gap: 12px;
+        flex-shrink: 0;
+        margin-bottom: 20px;
       }
       .books-controls .row {
         display: flex;
@@ -2016,93 +2016,127 @@
         color: var(--success);
       }
       #books-results {
+        flex: 1;
+        overflow-y: auto;
+        overflow-x: hidden;
+        min-height: 0;
         display: flex;
         flex-direction: column;
-        gap: 24px;
+        gap: 20px;
+        padding-bottom: 32px;
       }
       .books-panel {
         background: var(--bg2);
         border: 1px solid var(--border);
         border-radius: var(--radius);
         padding: 20px 22px;
-        min-height: 200px;
+        overflow: visible;
       }
       .books-panel h3 {
-        font-size: 13px;
-        font-weight: 600;
+        font-size: 11px;
+        font-weight: 700;
         text-transform: uppercase;
-        letter-spacing: 0.5px;
-        color: var(--text);
-        margin-bottom: 12px;
+        letter-spacing: 0.8px;
+        color: var(--text3);
+        margin-bottom: 16px;
+      }
+      .books-panel h3 .cache-label {
+        font-weight: 400;
+        text-transform: none;
+        letter-spacing: 0;
+        color: var(--text3);
+        font-size: 10px;
+      }
+      .cover-placeholder {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: hsl(var(--ph-hue, 220), 25%, 22%);
+        color: hsl(var(--ph-hue, 220), 40%, 70%);
+        font-size: 52px;
+        font-weight: 700;
+        letter-spacing: -2px;
+        user-select: none;
+        position: absolute;
+        top: 0; left: 0;
       }
       #books-candidates-list {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 12px;
+        display: grid;
+        grid-template-columns: repeat(auto-fill, 160px);
+        gap: 14px;
       }
       .book-card {
         display: flex;
-        gap: 10px;
-        padding: 10px;
+        flex-direction: column;
+        width: 160px;
+        flex-shrink: 0;
         border: 1px solid var(--border);
-        border-radius: var(--radius);
+        border-radius: 8px;
         background: var(--bg3);
-        width: calc(50% - 6px);
+        overflow: hidden;
+        cursor: pointer;
         box-sizing: border-box;
+        transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
+      }
+      .book-card:hover {
+        border-color: var(--accent);
+        transform: translateY(-2px);
+        box-shadow: 0 6px 18px rgba(0,0,0,0.4);
       }
       .book-card .book-cover {
-        width: 40px;
-        height: 60px;
-        background: var(--bg2);
-        border-radius: 3px;
-        overflow: hidden;
+        width: 160px;
+        height: 220px;
         flex-shrink: 0;
+        overflow: hidden;
+        position: relative;
       }
       .book-card .book-cover img {
         width: 100%;
         height: 100%;
         object-fit: cover;
+        display: block;
       }
       .book-card .book-info {
-        flex: 1;
-        min-width: 0;
+        padding: 8px 10px 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
       }
       .book-card .bc-title {
-        font-size: 12px;
+        font-size: 11px;
         font-weight: 600;
         color: var(--text);
+        overflow: hidden;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        line-height: 1.35;
+      }
+      .book-card .bc-author {
+        font-size: 10px;
+        color: var(--text2);
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
       }
-      .book-card .bc-author {
-        font-size: 11px;
-        color: var(--text2);
-        margin-top: 2px;
-      }
       .book-card .bc-meta {
         font-size: 10px;
         color: var(--text3);
-        margin-top: 4px;
         display: flex;
-        gap: 8px;
+        gap: 6px;
+        align-items: center;
         flex-wrap: wrap;
-      }
-      .book-card {
-        cursor: pointer;
-        transition: border-color 0.15s;
-      }
-      .book-card:hover {
-        border-color: var(--accent);
       }
       .book-card .bc-score {
         font-size: 10px;
         color: var(--accent);
-        font-weight: 600;
+        font-weight: 700;
       }
       .book-card .bc-desc {
         display: none;
-        font-size: 11px;
+        font-size: 10px;
         color: var(--text2);
         line-height: 1.5;
         margin-top: 6px;
@@ -2824,7 +2858,11 @@
       #screen-books,
       #screen-train,
       #screen-settings {
-        padding: 18px 24px;
+        padding: 18px 24px 0;
+      }
+      #screen-books {
+        overflow: hidden;
+        min-height: 0;
       }
       #screen-books,
       #screen-train {

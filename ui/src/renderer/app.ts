@@ -3369,11 +3369,57 @@ interface BookCandidate {
   score?: number;
 }
 
+interface BooksCacheEntry {
+  query: string;
+  goodreads: string;
+  timestamp: number;
+  candidates: BookCandidate[];
+  llmText: string;
+}
+
+const BOOKS_CACHE_KEY = "bookmind_recs_v1";
+const BOOKS_CACHE_MAX = 5;
+
+function loadBooksCache(): BooksCacheEntry[] {
+  try {
+    return JSON.parse(
+      localStorage.getItem(BOOKS_CACHE_KEY) || "[]",
+    ) as BooksCacheEntry[];
+  } catch {
+    return [];
+  }
+}
+
+function saveBooksCache(entry: BooksCacheEntry): void {
+  const entries = loadBooksCache().filter(
+    (e) => !(e.query === entry.query && e.goodreads === entry.goodreads),
+  );
+  entries.unshift(entry);
+  localStorage.setItem(
+    BOOKS_CACHE_KEY,
+    JSON.stringify(entries.slice(0, BOOKS_CACHE_MAX)),
+  );
+}
+
+function timeAgo(ts: number): string {
+  const s = Math.floor((Date.now() - ts) / 1000);
+  if (s < 60) return "just now";
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  return `${Math.floor(s / 86400)}d ago`;
+}
+
 const booksState = {
   bridgeRunning: false,
   bridgeReady: false,
   querying: false,
 };
+
+// Accumulates current query results before caching
+let _pendingCandidates: BookCandidate[] = [];
+let _pendingLlmText = "";
+let _pendingQuery = "";
+let _pendingGoodreads = "";
 
 const booksQueryInput = $<HTMLInputElement>("#books-query");
 const booksUserIdInput = $<HTMLInputElement>("#books-user-id");
@@ -3386,6 +3432,40 @@ const booksQueryBtn = $<HTMLButtonElement>("#books-query-btn");
 const booksStopBtn = $<HTMLButtonElement>("#books-stop-btn");
 const booksCandidatesList = $<HTMLElement>("#books-candidates-list");
 const booksLlmOutput = $<HTMLElement>("#books-llm-output");
+
+/** Render the LLM's raw <recommendations .../> XML into readable HTML. */
+function renderLlmResponse(raw: string): void {
+  const m = raw.match(/<recommendations\s+([\s\S]*?)\s*\/?>/);
+  if (!m) {
+    booksLlmOutput.textContent = raw;
+    return;
+  }
+  const attrs = m[1];
+  const genres = attrs.match(/requested_genres="([^"]*)"/)?.[1] ?? "";
+  const count = parseInt(attrs.match(/count="(\d+)"/)?.[1] ?? "0", 10);
+  const titleMatches = [...attrs.matchAll(/title="([^"]*)"/g)];
+  const seen = new Set<string>();
+  const titles: string[] = [];
+  for (const tm of titleMatches) {
+    if (!seen.has(tm[1])) {
+      seen.add(tm[1]);
+      titles.push(tm[1]);
+    }
+  }
+  const limit = count > 0 ? count : titles.length;
+  const shown = titles.slice(0, limit);
+  if (!shown.length) {
+    booksLlmOutput.textContent = raw;
+    return;
+  }
+  const genreSpan = genres
+    ? `<span style="color:var(--accent);font-weight:600">${genres}</span>`
+    : "your query";
+  const items = shown.map((t) => `<li>${t}</li>`).join("");
+  booksLlmOutput.innerHTML =
+    `<span style="color:var(--text3);font-size:11px">Recommended for ${genreSpan}:</span>` +
+    `<ol style="margin:6px 0 0 16px;padding:0;font-size:12px;line-height:1.7">${items}</ol>`;
+}
 
 function updateBooksUI() {
   booksQueryBtn.disabled = !booksState.bridgeReady || booksState.querying;
@@ -3407,14 +3487,48 @@ function updateBooksUI() {
   }
 }
 
-function renderBookCandidates(books: BookCandidate[]) {
+// Tracks book IDs/titles already rendered so repeated queries append not replace
+const _shownBookKeys = new Set<string>();
+
+function clearBookCandidates() {
+  _shownBookKeys.clear();
   booksCandidatesList.innerHTML = "";
-  if (!books.length) {
+  const panelHeader = booksCandidatesList
+    .closest(".books-panel")
+    ?.querySelector("h3");
+  if (panelHeader) panelHeader.innerHTML = "Candidates";
+}
+
+function appendBookCandidates(books: BookCandidate[], cacheLabel?: string) {
+  // Remove empty-state placeholder if present
+  const placeholder =
+    booksCandidatesList.querySelector<HTMLElement>(".bc-empty");
+  if (placeholder) placeholder.remove();
+
+  // Update panel header
+  const panelHeader = booksCandidatesList
+    .closest(".books-panel")
+    ?.querySelector("h3");
+  if (panelHeader) {
+    panelHeader.innerHTML = cacheLabel
+      ? `Candidates <span class="cache-label">· ${cacheLabel}</span>`
+      : "Candidates";
+  }
+
+  const newBooks = books.filter((b) => {
+    const key = b._id || b.Title || "";
+    if (_shownBookKeys.has(key)) return false;
+    if (key) _shownBookKeys.add(key);
+    return true;
+  });
+
+  if (!newBooks.length && !_shownBookKeys.size) {
     booksCandidatesList.innerHTML =
-      '<div style="color:var(--text3);font-size:12px;padding:20px 0">No matches found.</div>';
+      '<div class="bc-empty" style="color:var(--text3);font-size:12px;padding:20px 0">No matches found.</div>';
     return;
   }
-  books.forEach((b) => {
+
+  newBooks.forEach((b) => {
     const card = document.createElement("div");
     card.className = "book-card";
 
@@ -3426,9 +3540,19 @@ function renderBookCandidates(books: BookCandidate[]) {
       img.alt = b.Title || "cover";
       img.onerror = () => {
         img.remove();
+        const ph = cover.querySelector<HTMLElement>(".cover-placeholder");
+        if (ph) ph.style.display = "flex";
       };
       cover.appendChild(img);
     }
+    const ph = document.createElement("div");
+    ph.className = "cover-placeholder";
+    ph.style.display = b.CoverImageUrl ? "none" : "flex";
+    ph.textContent = (b.Title || "?")[0].toUpperCase();
+    const hue =
+      [...(b.Title || "")].reduce((acc, c) => acc + c.charCodeAt(0), 0) % 360;
+    ph.style.setProperty("--ph-hue", String(hue));
+    cover.appendChild(ph);
 
     const info = document.createElement("div");
     info.className = "book-info";
@@ -3440,28 +3564,23 @@ function renderBookCandidates(books: BookCandidate[]) {
 
     const author = document.createElement("div");
     author.className = "bc-author";
-    const authors = b.Authors || [];
-    author.textContent = authors.length ? authors.join(", ") : "Unknown author";
+    author.textContent = (b.Authors || []).join(", ") || "Unknown author";
 
     const meta = document.createElement("div");
     meta.className = "bc-meta";
-    const parts: string[] = [];
-    const genres = (b.Genres || []).slice(0, 3);
-    if (genres.length) parts.push(genres.join(" · "));
+    const metaParts: string[] = [];
     if (typeof b.AvgRating === "number")
-      parts.push(`★ ${b.AvgRating.toFixed(1)}`);
-    if (b.Pacing) parts.push(b.Pacing);
+      metaParts.push(`★ ${b.AvgRating.toFixed(1)}`);
     if (typeof b.score === "number")
-      parts.push(
+      metaParts.push(
         `<span class="bc-score">${(b.score * 100).toFixed(0)}%</span>`,
       );
-    meta.innerHTML = parts.join("&nbsp;&nbsp;•&nbsp;&nbsp;");
+    meta.innerHTML = metaParts.join(" &nbsp;·&nbsp; ");
 
     info.appendChild(title);
     info.appendChild(author);
     info.appendChild(meta);
 
-    // Expandable description
     const desc = document.createElement("div");
     desc.className = "bc-desc";
     const descText = (b.Description || "").trim();
@@ -3520,10 +3639,17 @@ booksQueryBtn.addEventListener("click", async () => {
     return;
   }
   booksState.querying = true;
+  _pendingCandidates = [];
+  _pendingLlmText = "";
+  _pendingQuery = query;
+  _pendingGoodreads = goodreads;
+  // Clear existing cards — user is issuing a fresh query
+  clearBookCandidates();
   updateBooksUI();
 
+  // Show a subtle searching state in the list area
   booksCandidatesList.innerHTML =
-    '<div style="color:var(--text3);font-size:12px;padding:20px 0">Searching…</div>';
+    '<div class="bc-empty" style="color:var(--text3);font-size:12px;padding:20px 0">Searching…</div>';
   booksLlmOutput.innerHTML = "";
 
   const request: Record<string, unknown> = {
@@ -3562,6 +3688,20 @@ document
 // Initial paint of the Books UI state
 updateBooksUI();
 
+// Restore last cached results so the screen isn't blank on load
+(function restoreBookCache() {
+  const entries = loadBooksCache();
+  if (!entries.length) return;
+  const last = entries[0];
+  if (!last.candidates.length) return;
+  appendBookCandidates(last.candidates, `cached ${timeAgo(last.timestamp)}`);
+  if (last.llmText) {
+    renderLlmResponse(last.llmText);
+  }
+  if (last.query) booksQueryInput.value = last.query;
+  if (last.goodreads) booksGoodreadsInput.value = last.goodreads;
+})();
+
 window.My.books.onEvent((msg: BridgeMsg) => {
   if (msg.type === "status") {
     const text = msg["message"] as string;
@@ -3581,16 +3721,31 @@ window.My.books.onEvent((msg: BridgeMsg) => {
     );
   } else if (msg.type === "candidates") {
     const books = (msg["books"] || []) as BookCandidate[];
-    renderBookCandidates(books);
+    _pendingCandidates.push(...books);
+    appendBookCandidates(books);
   } else if (msg.type === "token") {
     const t = (msg["text"] || "") as string;
+    _pendingLlmText += t;
     booksLlmOutput.textContent = (booksLlmOutput.textContent || "") + t;
   } else if (msg.type === "done") {
     booksState.querying = false;
     updateBooksUI();
-    if (!booksLlmOutput.textContent) {
+    const rawLlm = booksLlmOutput.textContent || "";
+    if (!rawLlm) {
       booksLlmOutput.innerHTML =
         '<span style="color:var(--text3);font-size:12px">Enable "Use local LLM" to get explanations.</span>';
+    } else {
+      renderLlmResponse(rawLlm);
+    }
+    // Save to local cache
+    if (_pendingCandidates.length > 0) {
+      saveBooksCache({
+        query: _pendingQuery,
+        goodreads: _pendingGoodreads,
+        timestamp: Date.now(),
+        candidates: _pendingCandidates,
+        llmText: _pendingLlmText,
+      });
     }
   } else if (msg.type === "error") {
     booksState.querying = false;
