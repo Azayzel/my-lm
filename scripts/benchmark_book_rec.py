@@ -220,6 +220,9 @@ def load_our_model(model_path: str) -> Any | None:
             base, dtype=torch.float16, device_map="auto"
         )
         model = PeftModel.from_pretrained(model, model_path)
+        # Clear max_length from the model's generation_config to avoid conflict
+        if hasattr(model, "generation_config"):
+            model.generation_config.max_length = None
         pipe = pipeline(
             "text-generation",
             model=model,
@@ -371,16 +374,19 @@ def main() -> None:
     for user in USERS:
         read = fetch_read_shelf(user["goodreads_id"], shelf="read", max_books=400)
         to_read = fetch_read_shelf(user["goodreads_id"], shelf="to-read", max_books=200)
+        # Ground truth = to-read shelf UNION books the user rated 4-5★
+        loved = [b for b in read if b.get("rating", 0) >= 4]
+        relevant_titles = _titles_set(to_read) | _titles_set(loved)
         user_data[user["name"]] = {
             "read_titles": _titles_set(read),
-            "to_read_titles": _titles_set(to_read),
+            "to_read_titles": relevant_titles,
             "taste_summary": (
                 f"Loves: {', '.join(sorted(user['favorite_genres']))}. "
                 f"Read {len(read)} books. "
                 f"Recently loved: {', '.join(b.get('title','') for b in read[:3] if b.get('rating',0)>=4)}"
             ),
         }
-        print(f"  {user['name']}: {len(read)} read, {len(to_read)} to-read")
+        print(f"  {user['name']}: {len(read)} read, {len(to_read)} to-read, {len(loved)} loved (4-5★)")
 
     # ── Load systems ──────────────────────────────────────────────────────────
     print("\nLoading systems...")
@@ -414,7 +420,7 @@ def main() -> None:
     if db is not None and embedder is not None:
         from mylm.rag.db import embed_text, vector_search_books
         dummy_vec = embed_text(embedder, "book fiction novel")
-        all_atlas_books = vector_search_books(db, dummy_vec, limit=500, num_candidates=1000)
+        all_atlas_books = vector_search_books(db, dummy_vec, limit=2000, num_candidates=4000)
         print(f"  Candidate pool: {len(all_atlas_books)} Atlas books")
     else:
         from mylm.rag.open_library import fetch_genre_catalog

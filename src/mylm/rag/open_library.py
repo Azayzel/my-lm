@@ -217,6 +217,7 @@ GENRE_TO_OL_SUBJECT: dict[str, str] = {
     "Fantasy": "fantasy",
     "Paranormal": "paranormal",
     "Science Fiction": "science_fiction",
+    "Speculative Fiction": "speculative_fiction",
     "Thriller": "thriller",
     "Mystery": "mystery",
     "Classics": "classic_literature",
@@ -229,6 +230,7 @@ GENRE_TO_OL_SUBJECT: dict[str, str] = {
     "Self-Help": "self-help",
     "Biography": "biography",
     "Memoir": "memoir",
+    "Japan": "japan",
 }
 
 
