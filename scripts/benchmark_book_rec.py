@@ -288,8 +288,8 @@ def rag_llm_recommend(
     """
     from mylm.rag.db import embed_text, vector_search_books
 
-    # Retrieve candidate pool (3× k for diversity)
-    candidates_k = min(k * 3, 50)
+    # Retrieve candidate pool (10× k for diversity — wider net increases GT coverage)
+    candidates_k = min(k * 10, 150)
     query_vec = embed_text(embedder, query)
     if taste_vec:
         blended = [0.5 * q + 0.5 * t for q, t in zip(query_vec, taste_vec)]
@@ -308,8 +308,9 @@ def rag_llm_recommend(
         {
             "role": "system",
             "content": (
-                "You are BookMind. You MUST only recommend books from the provided candidate list. "
-                "Return ONLY a numbered list of book titles from that list, one per line, no extra commentary."
+                "You are BookMind. You will be given a numbered list of candidate books. "
+                f"Reply with ONLY {k} numbers (e.g. 3, 7, 12) separated by commas — "
+                "the numbers of the best candidates for the user. No titles, no explanation."
             ),
         },
         {
@@ -317,25 +318,29 @@ def rag_llm_recommend(
             "content": (
                 f"User taste: {taste_summary}\n\n"
                 f"Query: {query}\n\n"
-                f"Candidate books:\n{candidate_list}\n\n"
-                f"From the candidates above, pick the best {k} for this user and query. "
-                f"Return ONLY their titles, one per line:"
+                f"Candidates:\n{candidate_list}\n\n"
+                f"Pick the best {k} by their numbers only:"
             ),
         },
     ]
     try:
-        out = pipe(prompt, max_new_tokens=512, do_sample=False)[0]["generated_text"]
+        out = pipe(prompt, max_new_tokens=64, do_sample=False)[0]["generated_text"]
         if isinstance(out, list):
             asst = [m for m in out if m.get("role") == "assistant"]
             text = asst[-1]["content"] if asst else ""
         else:
             text = str(out)
-        titles = []
-        for line in text.splitlines():
-            line = line.strip().lstrip("0123456789.-) ")
-            if line:
-                titles.append(line)
-        return titles[:k], hits
+        # Parse comma/space/newline-separated integers and map back to hit titles
+        import re as _re
+        nums = [int(m) for m in _re.findall(r"\b(\d+)\b", text) if 1 <= int(m) <= len(hits)]
+        # Deduplicate while preserving order
+        seen: set[int] = set()
+        picked = []
+        for n in nums:
+            if n not in seen:
+                seen.add(n)
+                picked.append(hits[n - 1].get("Title", ""))
+        return picked[:k], hits
     except Exception:
         return [], hits
 
@@ -382,7 +387,7 @@ def main() -> None:
             "taste_summary": (
                 f"Loves: {', '.join(sorted(user['favorite_genres']))}. "
                 f"Read {len(read)} books. "
-                f"Recently loved: {', '.join(b.get('title','') for b in read[:3] if b.get('rating',0)>=4)}"
+                f"Recently loved: {', '.join(b.get('title','') for b in loved[:8])}"
             ),
         }
         print(f"  {user['name']}: {len(read)} read, {len(to_read)} to-read, {len(loved)} loved (4-5★)")
