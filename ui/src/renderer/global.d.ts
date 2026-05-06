@@ -345,6 +345,7 @@ interface ModelInfo {
 interface AppPaths {
   outputs: string;
   llmModel: string;
+  loraModel: string;
   imageModel: string;
   python: string;
 }

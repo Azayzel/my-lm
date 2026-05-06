@@ -209,6 +209,9 @@ def rag_recommend(
 
 
 def load_our_model(model_path: str) -> Any | None:
+    import warnings
+    warnings.filterwarnings("ignore", message="Passing `generation_config` together")
+    warnings.filterwarnings("ignore", message="Both `max_new_tokens`.*and `max_length`")
     try:
         from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
         from peft import PeftModel
@@ -219,11 +222,11 @@ def load_our_model(model_path: str) -> Any | None:
         model = AutoModelForCausalLM.from_pretrained(
             base, dtype=torch.float16, device_map="auto"
         )
-        from transformers import PreTrainedModel
+        from transformers import GenerationConfig, PreTrainedModel
         peft_model = PeftModel.from_pretrained(model, model_path)
-        # Clear max_length from the model's generation_config to avoid conflict
-        if hasattr(peft_model, "generation_config"):
-            peft_model.generation_config.max_length = None
+        # Replace generation_config to avoid "both max_new_tokens and max_length set" warning
+        gc = GenerationConfig(max_length=4096)
+        peft_model.generation_config = gc  # type: ignore[assignment]
         pipe = pipeline(
             "text-generation",
             model=cast(PreTrainedModel, peft_model),

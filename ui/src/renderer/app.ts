@@ -3534,6 +3534,10 @@ booksQueryBtn.addEventListener("click", async () => {
   if (goodreads) request["goodreads_user"] = goodreads;
   if (booksUseLlmInput.checked && state.paths?.llmModel) {
     request["llm_model_dir"] = state.paths.llmModel;
+    // Use the BookMind LoRA adapter if available alongside the base model
+    if (state.paths.loraModel) {
+      request["lora_adapter_dir"] = state.paths.loraModel;
+    }
   }
 
   const res = await window.My.books.query(request);

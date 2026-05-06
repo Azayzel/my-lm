@@ -1968,9 +1968,9 @@
       /* ── Books (BookMind RAG) screen ────────────────────────────── */
       #screen-books {
         flex-direction: column;
-        padding: 24px 32px;
+        padding: 32px 40px;
         overflow-y: auto;
-        gap: 18px;
+        gap: 24px;
       }
       #screen-books h2 {
         font-size: 20px;
@@ -2013,18 +2013,16 @@
         color: var(--success);
       }
       #books-results {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 18px;
+        display: flex;
+        flex-direction: column;
+        gap: 24px;
       }
       .books-panel {
         background: var(--bg2);
         border: 1px solid var(--border);
         border-radius: var(--radius);
-        padding: 16px 18px;
-        min-height: 300px;
-        overflow-y: auto;
-        max-height: 70vh;
+        padding: 20px 22px;
+        min-height: 200px;
       }
       .books-panel h3 {
         font-size: 13px;
@@ -2034,20 +2032,26 @@
         color: var(--text);
         margin-bottom: 12px;
       }
+      #books-candidates-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+      }
       .book-card {
         display: flex;
-        gap: 12px;
-        padding: 10px 0;
-        border-bottom: 1px solid var(--border);
-      }
-      .book-card:last-child {
-        border-bottom: none;
+        gap: 10px;
+        padding: 10px;
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        background: var(--bg3);
+        width: calc(50% - 6px);
+        box-sizing: border-box;
       }
       .book-card .book-cover {
-        width: 48px;
-        height: 72px;
-        background: var(--bg3);
-        border-radius: 4px;
+        width: 40px;
+        height: 60px;
+        background: var(--bg2);
+        border-radius: 3px;
         overflow: hidden;
         flex-shrink: 0;
       }

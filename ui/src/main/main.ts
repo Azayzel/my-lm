@@ -28,6 +28,7 @@ const MODELS_DIR = path.join(ROOT, "models");
 const OUTPUTS_DIR = path.join(ROOT, "outputs");
 const BENCHMARK_RESULTS_DIR = path.join(ROOT, "benchmark_results");
 const LLM_MODEL_DIR = path.join(MODELS_DIR, "qwen3.5-2b");
+const LORA_MODEL_DIR = path.join(MODELS_DIR, "book-rec-lora");
 const IMAGE_MODEL_DIR = path.join(MODELS_DIR, "realvisxl-v4");
 const UPSCALER_PATH = path.join(MODELS_DIR, "upscalers", "4x-UltraSharp.pth");
 const FACE_DETECTOR_PATH = path.join(
@@ -196,6 +197,7 @@ function createWindow() {
     mainWindow?.webContents.send("app:paths", {
       outputs: OUTPUTS_DIR,
       llmModel: LLM_MODEL_DIR,
+      loraModel: fs.existsSync(LORA_MODEL_DIR) ? LORA_MODEL_DIR : "",
       imageModel: IMAGE_MODEL_DIR,
       python: PYTHON,
     });
