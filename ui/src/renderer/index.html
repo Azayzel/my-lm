@@ -1424,6 +1424,125 @@
 
       /* Benchmark sub-sections inside GPU screen */
       .bench-section {
+
+      /* ── GPU Sparklines ── */
+      .gpu-sparklines {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+      }
+      .gpu-spark {
+        background: var(--bg0);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 10px 12px;
+        min-width: 180px;
+        flex: 1 1 180px;
+      }
+      .gpu-spark .spark-label {
+        font-size: 10px;
+        color: var(--text3);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 4px;
+      }
+      .gpu-spark .spark-value {
+        font-size: 22px;
+        font-weight: 700;
+        color: var(--text);
+        line-height: 1;
+        margin-bottom: 6px;
+      }
+      .gpu-spark .spark-unit {
+        font-size: 12px;
+        font-weight: 400;
+        color: var(--text3);
+        margin-left: 2px;
+      }
+      .gpu-spark svg {
+        display: block;
+        width: 100%;
+        height: 50px;
+      }
+      .spark-line { fill: none; stroke: var(--accent); stroke-width: 1.5; }
+      .spark-fill { fill: var(--accent); opacity: 0.12; }
+      .spark-line-temp { fill: none; stroke: #f97316; stroke-width: 1.5; }
+      .spark-fill-temp { fill: #f97316; opacity: 0.12; }
+      .spark-line-power { fill: none; stroke: #a78bfa; stroke-width: 1.5; }
+      .spark-fill-power { fill: #a78bfa; opacity: 0.12; }
+      .spark-line-mem { fill: none; stroke: #4ade80; stroke-width: 1.5; }
+      .spark-fill-mem { fill: #4ade80; opacity: 0.12; }
+
+      /* ── GPU Processes ── */
+      .gpu-proc-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+      }
+      .gpu-proc-table th {
+        color: var(--text3);
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+        text-align: left;
+        padding: 4px 8px;
+        border-bottom: 1px solid var(--border);
+      }
+      .gpu-proc-table td {
+        padding: 5px 8px;
+        color: var(--text);
+        border-bottom: 1px solid var(--bg3);
+      }
+      .gpu-proc-table tr:last-child td { border-bottom: none; }
+      .gpu-proc-table .td-pid { color: var(--text3); font-size: 11px; }
+      .gpu-proc-mem-bar {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .gpu-proc-mem-bar .bar-bg {
+        flex: 1;
+        height: 4px;
+        background: var(--bg3);
+        border-radius: 2px;
+        overflow: hidden;
+      }
+      .gpu-proc-mem-bar .bar-fg {
+        height: 100%;
+        background: var(--accent);
+        border-radius: 2px;
+      }
+
+      /* ── GPU Health ── */
+      .gpu-health-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        gap: 10px;
+      }
+      .gpu-health-item {
+        background: var(--bg0);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 10px 12px;
+      }
+      .gpu-health-item .h-label {
+        font-size: 10px;
+        color: var(--text3);
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+        margin-bottom: 4px;
+      }
+      .gpu-health-item .h-value {
+        font-size: 18px;
+        font-weight: 700;
+        color: var(--text);
+      }
+      .gpu-health-item .h-value.ok { color: #4ade80; }
+      .gpu-health-item .h-value.warn { color: #f97316; }
+      .gpu-health-item .h-value.na { color: var(--text3); font-size: 13px; font-weight: 400; }
+
+      /* Benchmark sub-sections inside GPU screen */
+      .bench-section {
         background: var(--bg2);
         border: 1px solid var(--border);
         border-radius: var(--radius);
@@ -3795,6 +3914,24 @@ face asymmetry, eyes asymmetry, deformed eyes, open mouth, cartoon, painting, bl
             </div>
           </div>
           <div id="gpu-raw"></div>
+
+          <!-- ── Live Telemetry ── -->
+          <div class="bench-section" id="gpu-live-section" style="display:none">
+            <h3>📈 Live Telemetry <span id="gpu-live-badge" class="catalog-badge" style="font-size:11px;margin-left:6px">● Live</span></h3>
+            <div id="gpu-sparklines" class="gpu-sparklines"></div>
+          </div>
+
+          <!-- ── GPU Processes ── -->
+          <div class="bench-section" id="gpu-processes-section" style="display:none">
+            <h3>⚙️ GPU Processes</h3>
+            <div id="gpu-processes-content"></div>
+          </div>
+
+          <!-- ── GPU Health ── -->
+          <div class="bench-section" id="gpu-health-section" style="display:none">
+            <h3>🩺 GPU Health</h3>
+            <div id="gpu-health-content" class="gpu-health-grid"></div>
+          </div>
 
           <!-- ── Benchmark Setup ── -->
           <div class="bench-section">

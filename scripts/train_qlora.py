@@ -120,7 +120,7 @@ def main() -> int:
         fp16=True,
         logging_steps=10,
         save_strategy="epoch",
-        evaluation_strategy="epoch" if do_eval else "no",
+        eval_strategy="epoch" if do_eval else "no",
         optim="paged_adamw_8bit",
     )
 

@@ -80,15 +80,24 @@ def _is_peft_adapter(model_path: str) -> bool:
 
 
 def _detect_device_map():
-    """Pick the best device_map for loading: GPU-only if CUDA available, else CPU."""
+    """Always use auto so accelerate distributes layers across GPU + CPU RAM."""
+    return "auto"
+
+
+def _needs_quantization(model_path: str) -> bool:
+    """Return True if the model's safetensors are larger than 80 % of available VRAM."""
     try:
+        import glob
         import torch
 
-        if torch.cuda.is_available():
-            return {"": 0}
-    except ImportError:
-        pass
-    return "auto"
+        if not torch.cuda.is_available():
+            return False
+        shards = glob.glob(os.path.join(model_path, "*.safetensors"))
+        model_bytes = sum(os.path.getsize(p) for p in shards)
+        vram_bytes = torch.cuda.get_device_properties(0).total_memory
+        return model_bytes > 0.8 * vram_bytes
+    except Exception:
+        return False
 
 
 def load_model(model_path: str):
@@ -98,7 +107,20 @@ def load_model(model_path: str):
     from transformers import AutoModelForCausalLM, AutoTokenizer, TextIteratorStreamer
 
     dmap = _detect_device_map()
-    dtype = torch.float16 if dmap != "auto" else "auto"
+    use_4bit = _needs_quantization(model_path)
+
+    quant_cfg = None
+    if use_4bit:
+        try:
+            from transformers import BitsAndBytesConfig
+            quant_cfg = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_compute_dtype=torch.float16)
+            emit({"type": "info", "message": "Model too large for VRAM — loading with 4-bit quantization + CPU offload"})
+        except ImportError:
+            emit({"type": "info", "message": "bitsandbytes not installed, loading without quantization (may OOM)"})
+
+    load_kwargs = {"device_map": dmap, "torch_dtype": "auto"}
+    if quant_cfg is not None:
+        load_kwargs["quantization_config"] = quant_cfg
 
     if _is_peft_adapter(model_path):
         import json
@@ -115,19 +137,11 @@ def load_model(model_path: str):
             )
         emit({"type": "info", "message": f"Loading PEFT adapter on base {base_path}"})
         tokenizer = AutoTokenizer.from_pretrained(base_path)
-        base_model = AutoModelForCausalLM.from_pretrained(
-            base_path,
-            dtype=dtype,
-            device_map=dmap,
-        )
+        base_model = AutoModelForCausalLM.from_pretrained(base_path, **load_kwargs)
         model = PeftModel.from_pretrained(base_model, model_path)
     else:
         tokenizer = AutoTokenizer.from_pretrained(model_path)
-        model = AutoModelForCausalLM.from_pretrained(
-            model_path,
-            dtype=dtype,
-            device_map=dmap,
-        )
+        model = AutoModelForCausalLM.from_pretrained(model_path, **load_kwargs)
 
     model.eval()
     if tokenizer.pad_token is None:

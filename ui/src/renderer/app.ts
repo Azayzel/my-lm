@@ -165,7 +165,12 @@ function activateScreen(name: string) {
     loadModelsList();
     loadCatalog();
   }
-  if (name === "gpu") loadGpuInfo();
+  if (name === "gpu") {
+    loadGpuInfo();
+    startGpuPolling();
+  } else {
+    stopGpuPolling();
+  }
 }
 
 document
@@ -2135,6 +2140,199 @@ const gpuRaw = $<HTMLDivElement>("#gpu-raw");
 const gpuClearThumbCacheBtn = $<HTMLButtonElement>(
   "#gpu-clear-thumb-cache-btn",
 );
+const gpuLiveSection = $<HTMLDivElement>("#gpu-live-section");
+const gpuSparklines = $<HTMLDivElement>("#gpu-sparklines");
+const gpuProcessesSection = $<HTMLDivElement>("#gpu-processes-section");
+const gpuProcessesContent = $<HTMLDivElement>("#gpu-processes-content");
+const gpuHealthSection = $<HTMLDivElement>("#gpu-health-section");
+const gpuHealthContent = $<HTMLDivElement>("#gpu-health-content");
+const gpuLiveBadge = $<HTMLSpanElement>("#gpu-live-badge");
+
+// ── Sparkline helpers ────────────────────────────────────────────────────────
+const SPARK_MAX = 60; // samples to keep
+
+type SparkSeries = { values: number[]; max: number };
+interface GpuSparkState {
+  util: SparkSeries;
+  temp: SparkSeries;
+  power: SparkSeries;
+  mem: SparkSeries;
+}
+const gpuSparkData: GpuSparkState[] = [];
+
+function sparkPush(series: SparkSeries, value: number) {
+  series.values.push(value);
+  if (series.values.length > SPARK_MAX) series.values.shift();
+  series.max = Math.max(series.max, value) || 1;
+}
+
+function sparkSvg(
+  series: SparkSeries,
+  lineClass: string,
+  fillClass: string,
+): string {
+  const W = 200,
+    H = 50;
+  const vals = series.values;
+  if (vals.length < 2) return `<svg viewBox="0 0 ${W} ${H}"></svg>`;
+  const max = series.max || 1;
+  const step = W / (SPARK_MAX - 1);
+  const points = vals
+    .map((v, i) => {
+      const x = (SPARK_MAX - vals.length + i) * step;
+      const y = H - (v / max) * (H - 4) - 2;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(" ");
+  const firstX = ((SPARK_MAX - vals.length) * step).toFixed(1);
+  const fillPoints = `${firstX},${H} ${points} ${((SPARK_MAX - 1) * step).toFixed(1)},${H}`;
+  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+    <polygon class="${fillClass}" points="${fillPoints}"/>
+    <polyline class="${lineClass}" points="${points}"/>
+  </svg>`;
+}
+
+function renderSparklines(gpuIndex: number) {
+  const s = gpuSparkData[gpuIndex];
+  if (!s) return;
+  const lastUtil = s.util.values.at(-1) ?? 0;
+  const lastTemp = s.temp.values.at(-1) ?? 0;
+  const lastPower = s.power.values.at(-1) ?? 0;
+  const lastMem = s.mem.values.at(-1) ?? 0;
+  gpuSparklines.innerHTML = `
+    <div class="gpu-spark">
+      <div class="spark-label">GPU Utilization</div>
+      <div class="spark-value">${lastUtil.toFixed(0)}<span class="spark-unit">%</span></div>
+      ${sparkSvg(s.util, "spark-line", "spark-fill")}
+    </div>
+    <div class="gpu-spark">
+      <div class="spark-label">Temperature</div>
+      <div class="spark-value">${lastTemp.toFixed(0)}<span class="spark-unit">°C</span></div>
+      ${sparkSvg(s.temp, "spark-line-temp", "spark-fill-temp")}
+    </div>
+    <div class="gpu-spark">
+      <div class="spark-label">Power Draw</div>
+      <div class="spark-value">${lastPower.toFixed(1)}<span class="spark-unit">W</span></div>
+      ${sparkSvg(s.power, "spark-line-power", "spark-fill-power")}
+    </div>
+    <div class="gpu-spark">
+      <div class="spark-label">VRAM Used</div>
+      <div class="spark-value">${(lastMem / 1024).toFixed(1)}<span class="spark-unit">GB</span></div>
+      ${sparkSvg(s.mem, "spark-line-mem", "spark-fill-mem")}
+    </div>
+  `;
+}
+
+// ── GPU Processes ─────────────────────────────────────────────────────────────
+async function refreshGpuProcesses() {
+  const data = await window.My.system.gpuProcesses();
+  if (!data.ok || !data.processes.length) {
+    gpuProcessesContent.innerHTML =
+      '<div class="empty-state u-p-3"><p>No compute processes on GPU.</p></div>';
+    return;
+  }
+  const totalMem = data.processes.reduce((s, p) => s + p.memoryMb, 0) || 1;
+  const rows = data.processes
+    .map((p) => {
+      const pct = Math.min((p.memoryMb / totalMem) * 100, 100);
+      const shortName = p.name.replace(/.*[/\\]/, "");
+      return `<tr>
+      <td class="td-pid">${p.pid}</td>
+      <td>${escapeHtml(shortName)}</td>
+      <td>
+        <div class="gpu-proc-mem-bar">
+          <div class="bar-bg"><div class="bar-fg" style="width:${pct.toFixed(1)}%"></div></div>
+          <span style="font-size:11px;color:var(--text2);white-space:nowrap">${p.memoryMb} MB</span>
+        </div>
+      </td>
+    </tr>`;
+    })
+    .join("");
+  gpuProcessesContent.innerHTML = `<table class="gpu-proc-table">
+    <thead><tr><th>PID</th><th>Process</th><th>VRAM</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+}
+
+// ── GPU Health ────────────────────────────────────────────────────────────────
+async function refreshGpuHealth() {
+  const data = await window.My.system.gpuHealth();
+  if (!data.ok || !data.gpus.length) {
+    gpuHealthContent.innerHTML =
+      '<div class="empty-state u-p-3"><p>Health data unavailable.</p></div>';
+    return;
+  }
+  const gpu = data.gpus[0];
+  const naOrVal = (v: number | null, unit = "") =>
+    v === null
+      ? `<span class="h-value na">N/A</span>`
+      : `<span class="h-value">${v}${unit}</span>`;
+  const eccVal = (v: number | null) => {
+    if (v === null) return `<span class="h-value na">N/A</span>`;
+    return v === 0
+      ? `<span class="h-value ok">0</span>`
+      : `<span class="h-value warn">${v}</span>`;
+  };
+  gpuHealthContent.innerHTML = `
+    <div class="gpu-health-item"><div class="h-label">P-State</div>${naOrVal(null, gpu.pstate)}</div>
+    <div class="gpu-health-item"><div class="h-label">Fan Speed</div>${naOrVal(gpu.fanSpeedPercent, "%")}</div>
+    <div class="gpu-health-item"><div class="h-label">ECC Corrected</div>${eccVal(gpu.eccCorrected)}</div>
+    <div class="gpu-health-item"><div class="h-label">ECC Uncorrected</div>${eccVal(gpu.eccUncorrected)}</div>
+    <div class="gpu-health-item"><div class="h-label">Retired (SBE)</div>${eccVal(gpu.retiredSingleBit)}</div>
+    <div class="gpu-health-item"><div class="h-label">Retired (DBE)</div>${eccVal(gpu.retiredDoubleBit)}</div>
+  `;
+}
+
+// ── Live polling ──────────────────────────────────────────────────────────────
+let gpuPollTimer: ReturnType<typeof setInterval> | null = null;
+
+function startGpuPolling() {
+  if (gpuPollTimer !== null) return;
+  // init spark state for gpu 0 if not present
+  if (!gpuSparkData[0]) {
+    gpuSparkData[0] = {
+      util: { values: [], max: 100 },
+      temp: { values: [], max: 100 },
+      power: { values: [], max: 400 },
+      mem: { values: [], max: 24576 },
+    };
+  }
+  gpuLiveSection.style.display = "";
+  gpuProcessesSection.style.display = "";
+  gpuHealthSection.style.display = "";
+
+  const tick = async () => {
+    const poll = await window.My.system.gpuPoll();
+    if (poll.ok && poll.gpus[0]) {
+      const g = poll.gpus[0];
+      const s = gpuSparkData[0];
+      sparkPush(s.util, g.utilizationPercent ?? 0);
+      sparkPush(s.temp, g.temperatureC ?? 0);
+      sparkPush(s.power, g.powerDrawW ?? 0);
+      sparkPush(s.mem, g.memoryUsedMb ?? 0);
+      renderSparklines(0);
+    }
+  };
+  tick();
+  refreshGpuProcesses();
+  refreshGpuHealth();
+  gpuPollTimer = setInterval(async () => {
+    await tick();
+    // refresh processes + health every 5th tick (~10s)
+    const count = gpuSparkData[0]?.util.values.length ?? 0;
+    if (count % 5 === 0) {
+      refreshGpuProcesses();
+      refreshGpuHealth();
+    }
+  }, 2000);
+}
+
+function stopGpuPolling() {
+  if (gpuPollTimer !== null) {
+    clearInterval(gpuPollTimer);
+    gpuPollTimer = null;
+  }
+}
 
 async function loadGpuInfo() {
   gpuContent.innerHTML =
@@ -2159,29 +2357,61 @@ async function loadGpuInfo() {
 
   if (py?.devices?.length) {
     py.devices.forEach((dev) => {
+      const smi = data.nvidia?.[dev.index];
+      const memUsed = smi
+        ? `${smi.memoryUsedMb} MB used / ${smi.memoryFreeMb} MB free`
+        : "n/a";
+      const power =
+        smi?.powerDrawW != null
+          ? `${smi.powerDrawW.toFixed(1)} W${smi.powerLimitW != null ? ` / ${smi.powerLimitW.toFixed(1)} W limit` : ""}`
+          : "n/a";
+      const clocks =
+        smi?.gpuClockMhz != null
+          ? `${smi.gpuClockMhz} MHz GPU / ${smi.memClockMhz ?? "?"} MHz MEM`
+          : "n/a";
+      const pcie =
+        smi?.pcieLinkGen != null
+          ? `PCIe Gen${smi.pcieLinkGen} x${smi.pcieLinkWidth ?? "?"}`
+          : "n/a";
+
       cards.push(`
         <div class="gpu-card">
           <h3>GPU ${dev.index}: ${dev.name}</h3>
           <div class="kv">
-            <div class="k">VRAM</div><div class="v">${dev.total_memory_gb} GB</div>
-            <div class="k">Compute</div><div class="v">${dev.major}.${dev.minor}</div>
+            <div class="k">Compute Capability</div><div class="v">${dev.major}.${dev.minor}</div>
+            <div class="k">CUDA Cores</div><div class="v">${dev.cuda_cores?.toLocaleString() ?? "n/a"}</div>
+            <div class="k">Tensor Cores</div><div class="v">${dev.tensor_cores?.toLocaleString() ?? "n/a"}</div>
+            <div class="k">Streaming Multiprocessors</div><div class="v">${dev.multi_processor_count}</div>
+            <div class="k">Warp Size</div><div class="v">${dev.warp_size}</div>
+            <div class="k">L2 Cache</div><div class="v">${dev.l2_cache_size_mb} MB</div>
+            <div class="k">VRAM Total</div><div class="v">${dev.total_memory_gb} GB</div>
+            <div class="k">VRAM Usage</div><div class="v">${memUsed}</div>
+            <div class="k">Temperature</div><div class="v">${smi?.temperatureC ?? "n/a"} °C</div>
+            <div class="k">GPU Utilization</div><div class="v">${smi?.utilizationPercent ?? "n/a"}%</div>
+            <div class="k">Power</div><div class="v">${power}</div>
+            <div class="k">Clocks</div><div class="v">${clocks}</div>
+            <div class="k">Interface</div><div class="v">${pcie}</div>
+            <div class="k">Driver</div><div class="v">${smi?.driverVersion ?? "n/a"}</div>
           </div>
         </div>
       `);
     });
-  }
-
-  if (data.nvidia?.length) {
+  } else if (data.nvidia?.length) {
+    // Fallback: no PyTorch device info, show nvidia-smi only
     data.nvidia.forEach((gpu, index) => {
       cards.push(`
         <div class="gpu-card">
-          <h3>NVIDIA-SMI ${index}</h3>
+          <h3>GPU ${index}: ${gpu.name}</h3>
           <div class="kv">
-            <div class="k">Name</div><div class="v">${gpu.name}</div>
             <div class="k">Driver</div><div class="v">${gpu.driverVersion}</div>
-            <div class="k">Memory</div><div class="v">${gpu.memoryMb} MB</div>
-            <div class="k">Temp</div><div class="v">${gpu.temperatureC} °C</div>
-            <div class="k">Utilization</div><div class="v">${gpu.utilizationPercent}%</div>
+            <div class="k">VRAM Total</div><div class="v">${gpu.memoryMb} MB</div>
+            <div class="k">VRAM Used</div><div class="v">${gpu.memoryUsedMb} MB</div>
+            <div class="k">VRAM Free</div><div class="v">${gpu.memoryFreeMb} MB</div>
+            <div class="k">Temperature</div><div class="v">${gpu.temperatureC} °C</div>
+            <div class="k">GPU Utilization</div><div class="v">${gpu.utilizationPercent}%</div>
+            <div class="k">Power</div><div class="v">${gpu.powerDrawW != null ? `${gpu.powerDrawW.toFixed(1)} W` : "n/a"}${gpu.powerLimitW != null ? ` / ${gpu.powerLimitW.toFixed(1)} W limit` : ""}</div>
+            <div class="k">Clocks</div><div class="v">${gpu.gpuClockMhz != null ? `${gpu.gpuClockMhz} MHz GPU / ${gpu.memClockMhz ?? "?"} MHz MEM` : "n/a"}</div>
+            <div class="k">Interface</div><div class="v">${gpu.pcieLinkGen != null ? `PCIe Gen${gpu.pcieLinkGen} x${gpu.pcieLinkWidth ?? "?"}` : "n/a"}</div>
           </div>
         </div>
       `);
@@ -2195,7 +2425,11 @@ async function loadGpuInfo() {
   gpuRaw.textContent = JSON.stringify(data, null, 2);
 }
 
-$("#gpu-refresh-btn").addEventListener("click", loadGpuInfo);
+$("#gpu-refresh-btn").addEventListener("click", () => {
+  loadGpuInfo();
+  stopGpuPolling();
+  startGpuPolling();
+});
 
 gpuClearThumbCacheBtn.addEventListener("click", async () => {
   gpuClearThumbCacheBtn.disabled = true;

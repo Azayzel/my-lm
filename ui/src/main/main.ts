@@ -792,17 +792,24 @@ ipcMain.handle("system:diagnostics", async () => {
 ipcMain.handle("system:gpuInfo", async () => {
   const pyGpuScript = [
     "import json",
-    "out={'torch_available': False, 'cuda_available': False, 'cuda_version': None, 'device_count': 0, 'devices': []}",
+    "out={'torch_available':False,'cuda_available':False,'cuda_version':None,'device_count':0,'devices':[]}",
+    "_CORES_PER_SM={(2,0):32,(2,1):48,(3,0):192,(3,2):192,(3,5):192,(3,7):192,(5,0):128,(5,2):128,(5,3):128,(6,0):64,(6,1):128,(6,2):128,(7,0):64,(7,2):64,(7,5):64,(8,0):64,(8,6):128,(8,7):128,(8,9):128,(9,0):128}",
+    "_TENSOR_PER_SM={(7,0):8,(7,2):8,(7,5):8,(8,0):4,(8,6):4,(8,7):4,(8,9):4,(9,0):4}",
     "try:",
     "    import torch",
-    "    out['torch_available'] = True",
-    "    out['cuda_available'] = bool(torch.cuda.is_available())",
-    "    out['cuda_version'] = torch.version.cuda",
+    "    out['torch_available']=True",
+    "    out['cuda_available']=bool(torch.cuda.is_available())",
+    "    out['cuda_version']=torch.version.cuda",
     "    if out['cuda_available']:",
-    "        out['device_count'] = torch.cuda.device_count()",
+    "        out['device_count']=torch.cuda.device_count()",
     "        for i in range(out['device_count']):",
-    "            props = torch.cuda.get_device_properties(i)",
-    "            out['devices'].append({'index': i, 'name': props.name, 'total_memory_gb': round(props.total_memory/(1024**3), 2), 'major': props.major, 'minor': props.minor})",
+    "            p=torch.cuda.get_device_properties(i)",
+    "            cc=(p.major,p.minor)",
+    "            sm=p.multi_processor_count",
+    "            cps=_CORES_PER_SM.get(cc,_CORES_PER_SM.get((p.major,0),128))",
+    "            tps=_TENSOR_PER_SM.get(cc,None)",
+    "            l2=round(getattr(p,'l2_cache_size',0)/1024**2,2)",
+    "            out['devices'].append({'index':i,'name':p.name,'total_memory_gb':round(p.total_memory/1024**3,2),'major':p.major,'minor':p.minor,'multi_processor_count':sm,'cuda_cores':sm*cps,'tensor_cores':sm*tps if tps else None,'l2_cache_size_mb':l2,'warp_size':getattr(p,'warp_size',32)})",
     "except Exception as e:",
     "    out['error']=str(e)",
     "print(json.dumps(out))",
@@ -819,7 +826,7 @@ ipcMain.handle("system:gpuInfo", async () => {
   }
 
   const smi = await runCommand("nvidia-smi", [
-    "--query-gpu=name,driver_version,memory.total,temperature.gpu,utilization.gpu",
+    "--query-gpu=name,driver_version,memory.total,memory.used,memory.free,temperature.gpu,utilization.gpu,power.draw,power.limit,clocks.current.graphics,clocks.current.memory,pcie.link.gen.current,pcie.link.width.current",
     "--format=csv,noheader,nounits",
   ]);
 
@@ -829,15 +836,39 @@ ipcMain.handle("system:gpuInfo", async () => {
         .map((line) => line.trim())
         .filter(Boolean)
         .map((line) => {
-          const [name, driver, memoryMb, tempC, util] = line
-            .split(",")
-            .map((part) => part.trim());
+          const [
+            name,
+            driver,
+            memTotal,
+            memUsed,
+            memFree,
+            tempC,
+            util,
+            pwrDraw,
+            pwrLimit,
+            gpuClock,
+            memClock,
+            pcieGen,
+            pcieWidth,
+          ] = line.split(",").map((part) => part.trim());
+          const parseNum = (v: string) => {
+            const n = parseFloat(v);
+            return isNaN(n) ? null : n;
+          };
           return {
             name,
             driverVersion: driver,
-            memoryMb: Number(memoryMb),
+            memoryMb: Number(memTotal),
+            memoryUsedMb: Number(memUsed),
+            memoryFreeMb: Number(memFree),
             temperatureC: Number(tempC),
             utilizationPercent: Number(util),
+            powerDrawW: parseNum(pwrDraw),
+            powerLimitW: parseNum(pwrLimit),
+            gpuClockMhz: parseNum(gpuClock),
+            memClockMhz: parseNum(memClock),
+            pcieLinkGen: parseNum(pcieGen),
+            pcieLinkWidth: parseNum(pcieWidth),
           };
         })
     : [];
@@ -849,6 +880,93 @@ ipcMain.handle("system:gpuInfo", async () => {
     nvidia: nvidiaRows,
     nvidiaError: smi.ok ? null : smi.stderr || "nvidia-smi not available",
   };
+});
+
+// ── GPU Poll (lightweight, for live telemetry) ───────────────────────────────
+ipcMain.handle("system:gpuPoll", async () => {
+  const smi = await runCommand("nvidia-smi", [
+    "--query-gpu=utilization.gpu,temperature.gpu,power.draw,memory.used,memory.total,clocks.current.graphics",
+    "--format=csv,noheader,nounits",
+  ]);
+  if (!smi.ok) return { ok: false, error: smi.stderr, gpus: [] };
+  const parseNum = (v: string) => {
+    const n = parseFloat(v.trim());
+    return isNaN(n) ? null : n;
+  };
+  const gpus = smi.stdout
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [util, temp, power, memUsed, memTotal, gpuClock] = line.split(",");
+      return {
+        utilizationPercent: parseNum(util),
+        temperatureC: parseNum(temp),
+        powerDrawW: parseNum(power),
+        memoryUsedMb: parseNum(memUsed),
+        memoryTotalMb: parseNum(memTotal),
+        gpuClockMhz: parseNum(gpuClock),
+      };
+    });
+  return { ok: true, gpus, timestamp: Date.now() };
+});
+
+// ── GPU Processes ─────────────────────────────────────────────────────────────
+ipcMain.handle("system:gpuProcesses", async () => {
+  const smi = await runCommand("nvidia-smi", [
+    "--query-compute-apps=pid,process_name,used_gpu_memory",
+    "--format=csv,noheader,nounits",
+  ]);
+  if (!smi.ok) return { ok: false, processes: [], error: smi.stderr };
+  const processes = smi.stdout
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const parts = line.split(",").map((p) => p.trim());
+      return {
+        pid: parts[0] ?? "",
+        name: parts[1] ?? "",
+        memoryMb: parseFloat(parts[2] ?? "0") || 0,
+      };
+    });
+  return { ok: true, processes };
+});
+
+// ── GPU Health ────────────────────────────────────────────────────────────────
+ipcMain.handle("system:gpuHealth", async () => {
+  const smi = await runCommand("nvidia-smi", [
+    "--query-gpu=pstate,fan.speed,ecc.errors.corrected.volatile.total,ecc.errors.uncorrected.volatile.total,retired_pages.single_bit_ecc.count,retired_pages.double_bit.count",
+    "--format=csv,noheader,nounits",
+  ]);
+  if (!smi.ok) return { ok: false, error: smi.stderr, gpus: [] };
+  const parseNum = (v: string) => {
+    const n = parseFloat(v.trim());
+    return isNaN(n) ? null : n;
+  };
+  const gpus = smi.stdout
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [
+        pstate,
+        fanSpeed,
+        eccCorr,
+        eccUncorr,
+        retiredSingle,
+        retiredDouble,
+      ] = line.split(",");
+      return {
+        pstate: pstate?.trim() ?? "N/A",
+        fanSpeedPercent: parseNum(fanSpeed),
+        eccCorrected: parseNum(eccCorr),
+        eccUncorrected: parseNum(eccUncorr),
+        retiredSingleBit: parseNum(retiredSingle),
+        retiredDoubleBit: parseNum(retiredDouble),
+      };
+    });
+  return { ok: true, gpus };
 });
 
 ipcMain.handle("system:clearThumbnailCache", async () => {

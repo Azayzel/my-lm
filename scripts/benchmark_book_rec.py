@@ -66,25 +66,43 @@ PROBES = [
 
 # ─── Metrics ──────────────────────────────────────────────────────────────────
 
+import re as _re
+_BY_AUTHOR_RE = _re.compile(r"\s+by\s+.+$", _re.IGNORECASE)
+
+
+def _norm(title: str) -> str:
+    """Lowercase, strip leading articles, strip ' by Author' suffix, series info, collapse whitespace."""
+    t = title.lower().strip()
+    t = _BY_AUTHOR_RE.sub("", t)                    # strip " by Author Name"
+    t = _re.sub(r'\s*\([^)]*#\d[^)]*\)', '', t)    # strip "(Series Name, #1)"
+    t = _re.sub(r'\s*\([^)]*book\s+\d[^)]*\)', '', t, flags=_re.IGNORECASE)  # strip "(Book 1)"
+    t = _re.sub(r'^(the|a|an)\s+', '', t)           # strip leading articles
+    t = _re.sub(r'[^\w\s]', '', t)                  # strip punctuation
+    t = _re.sub(r'\s+', ' ', t).strip()
+    return t
+
 
 def _titles_set(books: list[dict]) -> set[str]:
     titles = set()
     for b in books:
-        t = (b.get("Title") or b.get("title") or "").lower().strip()
-        if t:
-            titles.add(t)
+        raw = (b.get("Title") or b.get("title") or "").strip()
+        if raw:
+            titles.add(_norm(raw))
+            titles.add(raw.lower().strip())  # also keep exact for safety
     return titles
 
 
 def precision_at_k(recommended: list[str], relevant: set[str], k: int) -> float:
-    hits = sum(1 for t in recommended[:k] if t.lower() in relevant)
+    hits = sum(1 for t in recommended[:k] if _norm(t) in relevant or t.lower().strip() in relevant)
     return hits / k if k > 0 else 0.0
 
 
 def ndcg_at_k(recommended: list[str], relevant: set[str], k: int) -> float:
     """NDCG@K where relevant books score 1, others 0."""
+    def _hit(t: str) -> bool:
+        return _norm(t) in relevant or t.lower().strip() in relevant
     dcg = sum(
-        (1.0 if t.lower() in relevant else 0.0) / math.log2(i + 2)
+        (1.0 if _hit(t) else 0.0) / math.log2(i + 2)
         for i, t in enumerate(recommended[:k])
     )
     # Ideal: all relevant at top
@@ -94,7 +112,7 @@ def ndcg_at_k(recommended: list[str], relevant: set[str], k: int) -> float:
 
 
 def novel_at_k(recommended: list[str], already_read: set[str], k: int) -> float:
-    novel = sum(1 for t in recommended[:k] if t.lower() not in already_read)
+    novel = sum(1 for t in recommended[:k] if _norm(t) not in already_read and t.lower().strip() not in already_read)
     return novel / k if k > 0 else 0.0
 
 
@@ -102,14 +120,16 @@ def personal_score(recommended: list[str], all_books: list[dict], fav_genres: se
     """Fraction of top-K recs that match the user's favourite genres."""
     book_genres: dict[str, set[str]] = {}
     for b in all_books:
-        t = (b.get("Title") or b.get("title") or "").lower()
+        raw = (b.get("Title") or b.get("title") or "")
         genres = set(g.lower() for g in (b.get("Genres") or b.get("categories") or []))
-        book_genres[t] = genres
+        # Index by both normalized and raw-lower so LLM output variations still match
+        book_genres[_norm(raw)] = genres
+        book_genres[raw.lower()] = genres
 
     fav_lower = {g.lower() for g in fav_genres}
     matches = 0
     for title in recommended[:k]:
-        book_g = book_genres.get(title.lower(), set())
+        book_g = book_genres.get(_norm(title)) or book_genres.get(title.lower(), set())
         if book_g & fav_lower:
             matches += 1
     return matches / k if k > 0 else 0.0
@@ -197,7 +217,7 @@ def load_our_model(model_path: str) -> Any | None:
         base = "models/qwen3.5-2b"
         tokenizer = AutoTokenizer.from_pretrained(base)
         model = AutoModelForCausalLM.from_pretrained(
-            base, torch_dtype=torch.float16, device_map="auto"
+            base, dtype=torch.float16, device_map="auto"
         )
         model = PeftModel.from_pretrained(model, model_path)
         pipe = pipeline(
@@ -248,6 +268,74 @@ def llm_recommend(pipe: Any, query: str, taste_summary: str, k: int) -> list[str
         return titles[:k]
     except Exception:
         return []
+
+
+def rag_llm_recommend(
+    pipe: Any,
+    db: Any,
+    embedder: Any,
+    query: str,
+    taste_summary: str,
+    taste_vec: list[float] | None,
+    k: int,
+) -> tuple[list[str], list[dict]]:
+    """RAG-augmented LLM: retrieve 3×K candidates from Atlas, ask LLM to pick best K.
+
+    This constrains the LLM to books that actually exist in the pool, making
+    precision/personal_score metrics meaningful.
+    """
+    from mylm.rag.db import embed_text, vector_search_books
+
+    # Retrieve candidate pool (3× k for diversity)
+    candidates_k = min(k * 3, 50)
+    query_vec = embed_text(embedder, query)
+    if taste_vec:
+        blended = [0.5 * q + 0.5 * t for q, t in zip(query_vec, taste_vec)]
+        mag = sum(v ** 2 for v in blended) ** 0.5
+        query_vec = [v / mag for v in blended] if mag > 0 else query_vec
+    hits = vector_search_books(db, query_vec, limit=candidates_k, num_candidates=candidates_k * 5)
+    if not hits:
+        return [], []
+
+    candidate_list = "\n".join(
+        f"{i+1}. {b.get('Title', '')} by {', '.join(b.get('Authors') or [b.get('Author', '')])}"
+        for i, b in enumerate(hits)
+    )
+
+    prompt = [
+        {
+            "role": "system",
+            "content": (
+                "You are BookMind. You MUST only recommend books from the provided candidate list. "
+                "Return ONLY a numbered list of book titles from that list, one per line, no extra commentary."
+            ),
+        },
+        {
+            "role": "user",
+            "content": (
+                f"User taste: {taste_summary}\n\n"
+                f"Query: {query}\n\n"
+                f"Candidate books:\n{candidate_list}\n\n"
+                f"From the candidates above, pick the best {k} for this user and query. "
+                f"Return ONLY their titles, one per line:"
+            ),
+        },
+    ]
+    try:
+        out = pipe(prompt)[0]["generated_text"]
+        if isinstance(out, list):
+            asst = [m for m in out if m.get("role") == "assistant"]
+            text = asst[-1]["content"] if asst else ""
+        else:
+            text = str(out)
+        titles = []
+        for line in text.splitlines():
+            line = line.strip().lstrip("0123456789.-) ")
+            if line:
+                titles.append(line)
+        return titles[:k], hits
+    except Exception:
+        return [], hits
 
 
 # ─── Main ─────────────────────────────────────────────────────────────────────
@@ -323,7 +411,7 @@ def main() -> None:
 
     # ── Candidate pool for HF baseline (needs a book list) ────────────────────
     # Use Atlas if available, else build a small pool from OL
-    if db and embedder:
+    if db is not None and embedder is not None:
         from mylm.rag.db import embed_text, vector_search_books
         dummy_vec = embed_text(embedder, "book fiction novel")
         all_atlas_books = vector_search_books(db, dummy_vec, limit=500, num_candidates=1000)
@@ -363,21 +451,29 @@ def main() -> None:
                 sys_scores["hf_baseline"]["personal"].append(personal_score(recs, all_atlas_books, user["favorite_genres"], args.k))
 
             # RAG
-            if db and embedder:
+            if db is not None and embedder is not None:
                 recs, hits = rag_recommend(db, embedder, probe, taste_vec, args.k)
                 sys_scores["rag"]["precision"].append(precision_at_k(recs, relevant, args.k))
                 sys_scores["rag"]["ndcg"].append(ndcg_at_k(recs, relevant, args.k))
                 sys_scores["rag"]["novel"].append(novel_at_k(recs, already_read, args.k))
                 sys_scores["rag"]["personal"].append(personal_score(recs, hits, user["favorite_genres"], args.k))
 
-            # Our LLM
+            # Our LLM — RAG-augmented when Atlas is available, free-form otherwise
             if our_pipe:
-                recs = llm_recommend(our_pipe, probe, taste_summary, args.k)
-                sys_scores["our_model"]["precision"].append(precision_at_k(recs, relevant, args.k))
-                sys_scores["our_model"]["ndcg"].append(ndcg_at_k(recs, relevant, args.k))
-                sys_scores["our_model"]["novel"].append(novel_at_k(recs, already_read, args.k))
-                # LLM recs are free text — can't look up genres, skip personal_score
-                sys_scores["our_model"]["personal"].append(0.0)
+                if db is not None and embedder is not None:
+                    recs, hits = rag_llm_recommend(
+                        our_pipe, db, embedder, probe, taste_summary, taste_vec, args.k
+                    )
+                    sys_scores["our_model"]["precision"].append(precision_at_k(recs, relevant, args.k))
+                    sys_scores["our_model"]["ndcg"].append(ndcg_at_k(recs, relevant, args.k))
+                    sys_scores["our_model"]["novel"].append(novel_at_k(recs, already_read, args.k))
+                    sys_scores["our_model"]["personal"].append(personal_score(recs, hits, user["favorite_genres"], args.k))
+                else:
+                    recs = llm_recommend(our_pipe, probe, taste_summary, args.k)
+                    sys_scores["our_model"]["precision"].append(precision_at_k(recs, relevant, args.k))
+                    sys_scores["our_model"]["ndcg"].append(ndcg_at_k(recs, relevant, args.k))
+                    sys_scores["our_model"]["novel"].append(novel_at_k(recs, already_read, args.k))
+                    sys_scores["our_model"]["personal"].append(0.0)
 
         # Average over probes
         def _avg(lst: list[float]) -> float:
@@ -385,7 +481,7 @@ def main() -> None:
 
         user_results = {}
         for sys_name, metrics in sys_scores.items():
-            if not any(metrics["precision"]):
+            if not metrics["precision"]:  # skip if system never ran (empty list)
                 continue
             user_results[sys_name] = {
                 f"precision@{args.k}": _avg(metrics["precision"]),

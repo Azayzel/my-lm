@@ -141,6 +141,9 @@ interface MyAPI {
   system: {
     diagnostics(): Promise<SystemDiagnostics>;
     gpuInfo(): Promise<GpuInfoResponse>;
+    gpuPoll(): Promise<GpuPollResponse>;
+    gpuProcesses(): Promise<GpuProcessesResponse>;
+    gpuHealth(): Promise<GpuHealthResponse>;
     clearThumbnailCache(): Promise<{
       ok: boolean;
       removedFiles?: number;
@@ -174,6 +177,11 @@ interface GpuInfoResponse {
       total_memory_gb: number;
       major: number;
       minor: number;
+      multi_processor_count: number;
+      cuda_cores: number | null;
+      tensor_cores: number | null;
+      l2_cache_size_mb: number;
+      warp_size: number;
     }>;
     error?: string;
   } | null;
@@ -182,10 +190,55 @@ interface GpuInfoResponse {
     name: string;
     driverVersion: string;
     memoryMb: number;
+    memoryUsedMb: number;
+    memoryFreeMb: number;
     temperatureC: number;
     utilizationPercent: number;
+    powerDrawW: number | null;
+    powerLimitW: number | null;
+    gpuClockMhz: number | null;
+    memClockMhz: number | null;
+    pcieLinkGen: number | null;
+    pcieLinkWidth: number | null;
   }>;
   nvidiaError: string | null;
+}
+
+interface GpuPollResponse {
+  ok: boolean;
+  error?: string;
+  timestamp?: number;
+  gpus: Array<{
+    utilizationPercent: number | null;
+    temperatureC: number | null;
+    powerDrawW: number | null;
+    memoryUsedMb: number | null;
+    memoryTotalMb: number | null;
+    gpuClockMhz: number | null;
+  }>;
+}
+
+interface GpuProcessesResponse {
+  ok: boolean;
+  error?: string;
+  processes: Array<{
+    pid: string;
+    name: string;
+    memoryMb: number;
+  }>;
+}
+
+interface GpuHealthResponse {
+  ok: boolean;
+  error?: string;
+  gpus: Array<{
+    pstate: string;
+    fanSpeedPercent: number | null;
+    eccCorrected: number | null;
+    eccUncorrected: number | null;
+    retiredSingleBit: number | null;
+    retiredDoubleBit: number | null;
+  }>;
 }
 
 interface TrainConfig {

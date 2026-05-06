@@ -155,6 +155,9 @@ contextBridge.exposeInMainWorld("My", {
   system: {
     diagnostics: () => ipcRenderer.invoke("system:diagnostics"),
     gpuInfo: () => ipcRenderer.invoke("system:gpuInfo"),
+    gpuPoll: () => ipcRenderer.invoke("system:gpuPoll"),
+    gpuProcesses: () => ipcRenderer.invoke("system:gpuProcesses"),
+    gpuHealth: () => ipcRenderer.invoke("system:gpuHealth"),
     clearThumbnailCache: () => ipcRenderer.invoke("system:clearThumbnailCache"),
   },
 

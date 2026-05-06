@@ -155,37 +155,64 @@ def _parse_rss_shelf(xml_text: str) -> list[dict[str, Any]]:
 def fetch_read_shelf(
     user_input: str,
     shelf: str = "read",
-    max_books: int = 100,
+    max_books: int = 2000,
 ) -> list[dict[str, Any]]:
     """Return the user's books on the given shelf (default 'read').
 
-    Tries RSS first (cheapest), falls back to HTML scraping. If the profile
+    Paginates the RSS feed (page param, 100 items/page) to retrieve all books,
+    then falls back to HTML scraping if RSS returns nothing. If the profile
     is private or doesn't exist, returns an empty list.
     """
     user_id = _resolve_user_id(user_input)
     if not user_id:
         return []
 
-    rss_url = f"https://www.goodreads.com/review/list_rss/{user_id}?shelf={shelf}"
-    try:
-        r = requests.get(rss_url, headers=_headers(), timeout=REQUEST_TIMEOUT)
-        if r.status_code == 200 and "<item" in r.text:
-            books = _parse_rss_shelf(r.text)
-            if books:
-                return books[:max_books]
-    except requests.RequestException:
-        pass
+    # ── RSS path (paginated) ────────────────────────────────────────────────
+    all_books: list[dict[str, Any]] = []
+    page = 1
+    while len(all_books) < max_books:
+        rss_url = (
+            f"https://www.goodreads.com/review/list_rss/{user_id}"
+            f"?shelf={shelf}&page={page}"
+        )
+        try:
+            r = requests.get(rss_url, headers=_headers(), timeout=REQUEST_TIMEOUT)
+            if r.status_code != 200 or "<item" not in r.text:
+                break
+            page_books = _parse_rss_shelf(r.text)
+            if not page_books:
+                break
+            all_books.extend(page_books)
+            if len(page_books) < 100:
+                # Last page — fewer than a full page means no more
+                break
+            page += 1
+        except requests.RequestException:
+            break
 
-    html_url = (
-        f"https://www.goodreads.com/review/list/{user_id}"
-        f"?shelf={shelf}&per_page={max_books}&sort=date_read&order=d"
-    )
-    try:
-        r = requests.get(html_url, headers=_headers(), timeout=REQUEST_TIMEOUT)
-        if r.status_code == 200:
-            books = _parse_html_shelf(r.text)
-            return books[:max_books]
-    except requests.RequestException:
-        pass
+    if all_books:
+        return all_books[:max_books]
 
-    return []
+    # ── HTML fallback (paginated) ───────────────────────────────────────────
+    per_page = 100
+    page = 1
+    while len(all_books) < max_books:
+        html_url = (
+            f"https://www.goodreads.com/review/list/{user_id}"
+            f"?shelf={shelf}&per_page={per_page}&page={page}&sort=date_read&order=d"
+        )
+        try:
+            r = requests.get(html_url, headers=_headers(), timeout=REQUEST_TIMEOUT)
+            if r.status_code != 200:
+                break
+            page_books = _parse_html_shelf(r.text)
+            if not page_books:
+                break
+            all_books.extend(page_books)
+            if len(page_books) < per_page:
+                break
+            page += 1
+        except requests.RequestException:
+            break
+
+    return all_books[:max_books]
