@@ -29,7 +29,7 @@ import math
 import sys
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
@@ -219,16 +219,15 @@ def load_our_model(model_path: str) -> Any | None:
         model = AutoModelForCausalLM.from_pretrained(
             base, dtype=torch.float16, device_map="auto"
         )
-        model = PeftModel.from_pretrained(model, model_path)
+        from transformers import PreTrainedModel
+        peft_model = PeftModel.from_pretrained(model, model_path)
         # Clear max_length from the model's generation_config to avoid conflict
-        if hasattr(model, "generation_config"):
-            model.generation_config.max_length = None
+        if hasattr(peft_model, "generation_config"):
+            peft_model.generation_config.max_length = None
         pipe = pipeline(
             "text-generation",
-            model=model,
+            model=cast(PreTrainedModel, peft_model),
             tokenizer=tokenizer,
-            max_new_tokens=512,
-            do_sample=False,
         )
         return pipe
     except Exception as e:
@@ -256,7 +255,7 @@ def llm_recommend(pipe: Any, query: str, taste_summary: str, k: int) -> list[str
         },
     ]
     try:
-        out = pipe(prompt)[0]["generated_text"]
+        out = pipe(prompt, max_new_tokens=512, do_sample=False)[0]["generated_text"]
         # Extract last assistant turn
         if isinstance(out, list):
             asst = [m for m in out if m.get("role") == "assistant"]
@@ -325,7 +324,7 @@ def rag_llm_recommend(
         },
     ]
     try:
-        out = pipe(prompt)[0]["generated_text"]
+        out = pipe(prompt, max_new_tokens=512, do_sample=False)[0]["generated_text"]
         if isinstance(out, list):
             asst = [m for m in out if m.get("role") == "assistant"]
             text = asst[-1]["content"] if asst else ""
@@ -345,7 +344,7 @@ def rag_llm_recommend(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
     parser.add_argument("--k", type=int, default=10)
     parser.add_argument(
         "--no-mongo",
