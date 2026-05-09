@@ -57,3 +57,28 @@ python scripts/model_download.py <hf_repo_id> [--dest models/<name>]
 ```
 
 Wraps `huggingface_hub.snapshot_download`. Resumes on interruption.
+
+## OpenLibrary ingest
+
+```bash
+# One-shot pass
+python scripts/ol_ingest.py
+
+# Loop continuously (or use the Windows service installer)
+python scripts/ol_ingest.py --daemon --sleep-hours 1 --per-subject 100
+```
+
+Crawls Open Library subject catalogs, embeds each book with sentence-transformers, and upserts into the BookMind `books` collection. State is persisted in `ol_ingest_state` so it's resumable. See [ol_ingest.md](ol_ingest.md) for the full operational guide.
+
+## Agent benchmark
+
+```bash
+# Validate task definitions, no Ollama required
+python scripts/agent_bench.py --dry-run
+
+# Quick run
+python scripts/agent_bench.py --models llama3.2:3b \
+    --tasks code_debugger,research_synth --trials 2
+```
+
+Multi-turn agent benchmark measuring TTFT, context drift, model reloads, and tool-call reliability. Results land in `benchmark_results/` as JSON + Markdown. Surfaced in the UI under the **Bench** screen.

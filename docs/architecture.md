@@ -44,20 +44,37 @@ The TS side correlates events by `id` and resolves the calling promise on `done`
 
 ## Renderer ↔ Main IPC
 
-Renderer-only world; `nodeIntegration: false`, `contextIsolation: true`. The preload exposes a typed surface as `window.My`:
+Renderer-only world; `nodeIntegration: false`, `contextIsolation: true`. The preload exposes a typed surface as `window.My` (see [ui/src/main/preload.ts](https://github.com/Azayzel/my-lm/blob/main/ui/src/main/preload.ts)):
 
 ```ts
-window.My.chat.send(message, opts)        // request/response (invoke)
-window.My.chat.onToken(cb)                // streaming subscription
-window.My.image.generate(params)
-window.My.image.onProgress(cb)
+// Chat LLM
+window.My.llm.start(modelPath?)
+window.My.llm.chat(request)
+window.My.llm.onEvent(cb)                  // token stream / done / error
+
+// Image generation
+window.My.image.start(modelPath?)
+window.My.image.generate(request)
+window.My.image.onEvent(cb)                // progress / preview / done
+
+// Training
 window.My.train.start(config)
-window.My.models.list() / install(repoId) / catalog()
-window.My.gpu.info() / nvidiaSmi()
-window.My.history.* / prompts.* / config.*
+window.My.train.onEvent(cb)                // loss / epoch / lr
+
+// BookMind RAG
+window.My.books.start() / query() / status()
+window.My.books.onEvent(cb)
+
+// OpenLibrary ingest service heartbeat
+window.My.ingest.status()                  // reads data/ol_ingest_status.json
+
+// Other
+window.My.models.list() / download(...) / catalog
+window.My.system.diagnostics() / gpuInfo() / gpuPoll()
+window.My.history.* / prompts.* / config.* / media.*
 ```
 
-Long-running operations use fire-and-forget `send()` + an `onEvent` subscription for streaming updates back. Promise-style `invoke()` is used for short request/response calls.
+Long-running operations use fire-and-forget `start()` / `generate()` + an `onEvent` subscription for streaming updates back. Promise-style `invoke()` is used for short request/response calls.
 
 ## Memory budget
 

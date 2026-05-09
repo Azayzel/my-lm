@@ -13,7 +13,7 @@
 **Linux / macOS:**
 
 ```bash
-git clone https://github.com/lavely/my-lm.git
+git clone https://github.com/Azayzel/my-lm.git
 cd my-lm
 ./setup.sh
 cd ui
@@ -23,7 +23,7 @@ npm start
 **Windows:**
 
 ```powershell
-git clone https://github.com/lavely/my-lm.git
+git clone https://github.com/Azayzel/my-lm.git
 cd my-lm
 setup.bat
 cd ui
@@ -34,7 +34,7 @@ The setup script:
 
 1. Creates `.venv` (Python virtual environment)
 2. Installs PyTorch 2.5.1 + CUDA 12.1 wheels (with a post-install CUDA sanity check)
-3. Installs all pinned dependencies from [requirements.txt](../requirements.txt)
+3. Installs all pinned dependencies from [requirements.txt](https://github.com/Azayzel/my-lm/blob/main/requirements.txt)
 4. Uninstalls `xformers` if a transitive dep pulled it in (incompatible with torch 2.5.x)
 5. Runs `npm install` and `npm run build` in `ui/`
 

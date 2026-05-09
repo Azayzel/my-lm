@@ -15,7 +15,7 @@ Outputs to `ui/release/`:
 
 ## What's bundled
 
-`electron-builder` (configured in [ui/package.json](../ui/package.json)) bundles:
+`electron-builder` (configured in [ui/package.json](https://github.com/Azayzel/my-lm/blob/main/ui/package.json)) bundles:
 
 - The compiled main and renderer (`dist/`)
 - `node_modules`

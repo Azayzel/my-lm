@@ -1,6 +1,6 @@
 # Features
 
-Detailed per-screen tour. For a high-level overview see the [README](../README.md).
+Detailed per-screen tour. For a high-level overview see the [home page](index.md).
 
 ## Chat
 
