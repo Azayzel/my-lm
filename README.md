@@ -104,7 +104,7 @@ See [docs/features.md](docs/features.md) for the full per-feature breakdown.
 **Prerequisites:** Python 3.10+, Node.js 18+, NVIDIA GPU + CUDA drivers, `nvidia-smi` on PATH.
 
 ```bash
-git clone https://github.com/lavely/my-lm.git
+git clone https://github.com/Azayzel/my-lm.git
 cd my-lm
 
 # Linux / macOS
@@ -227,7 +227,7 @@ Results are written to `benchmark_results/` as both JSON (raw data) and Markdown
 
 PRs welcome! [CONTRIBUTING.md](CONTRIBUTING.md) covers the dev loop, coding conventions, and how to run linters/tests locally. Be excellent to each other — see the [Code of Conduct](CODE_OF_CONDUCT.md).
 
-Found a bug or have an idea? [Open an issue](https://github.com/lavely/my-lm/issues/new/choose) · Have a question? [Start a discussion](https://github.com/lavely/my-lm/discussions).
+Found a bug or have an idea? [Open an issue](https://github.com/Azayzel/my-lm/issues/new/choose) · Have a question? [Start a discussion](https://github.com/Azayzel/my-lm/discussions).
 
 ---
 

@@ -1,0 +1,100 @@
+site_name: My-LM
+site_description: Local, all-in-one playground for chat, SDXL, RAG, and QLoRA on a single GPU.
+site_url: https://azayzel.github.io/my-lm/
+site_author: Josh Lavely
+
+repo_name: Azayzel/my-lm
+repo_url: https://github.com/Azayzel/my-lm
+edit_uri: edit/main/docs/
+
+copyright: Copyright &copy; 2026 Josh Lavely
+
+docs_dir: docs
+
+theme:
+  name: material
+  language: en
+  palette:
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - navigation.indexes
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.code.annotate
+    - content.action.edit
+    - content.tabs.link
+  icon:
+    repo: fontawesome/brands/github
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/Azayzel/my-lm
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.keys
+
+plugins:
+  - search
+
+nav:
+  - Home: index.md
+  - Get started:
+      - Installation: installation.md
+      - Features: features.md
+      - CLI tools: cli.md
+  - Architecture:
+      - Overview: architecture.md
+      - System diagram: diagrams/architecture.md
+  - BookMind:
+      - RAG recommender: bookmind.md
+      - OpenLibrary ingest: ol_ingest.md
+  - Operate:
+      - Packaging: packaging.md

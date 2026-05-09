@@ -34,9 +34,9 @@ cheap.
 
 | Path | Purpose |
 |---|---|
-| [scripts/ol_ingest.py](../scripts/ol_ingest.py) | Crawler / daemon |
-| [scripts/install_ol_ingest_service.ps1](../scripts/install_ol_ingest_service.ps1) | NSSM service installer |
-| [src/mylm/rag/open_library.py](../src/mylm/rag/open_library.py) | OL API client + `GENRE_TO_OL_SUBJECT` map |
+| [scripts/ol_ingest.py](https://github.com/Azayzel/my-lm/blob/main/scripts/ol_ingest.py) | Crawler / daemon |
+| [scripts/install_ol_ingest_service.ps1](https://github.com/Azayzel/my-lm/blob/main/scripts/install_ol_ingest_service.ps1) | NSSM service installer |
+| [src/mylm/rag/open_library.py](https://github.com/Azayzel/my-lm/blob/main/src/mylm/rag/open_library.py) | OL API client + `GENRE_TO_OL_SUBJECT` map |
 | `data/ol_ingest_status.json` | Heartbeat (status, current subject, totals) |
 | `logs/ol_ingest.{out,err}.log` | Service logs (rotated at 10 MB) |
 
@@ -106,7 +106,7 @@ the new flags.
 ## Tuning guide
 
 The OL client rate-limits at 0.5 s between requests in
-[open_library.py](../src/mylm/rag/open_library.py); each new book costs
+[open_library.py](https://github.com/Azayzel/my-lm/blob/main/src/mylm/rag/open_library.py); each new book costs
 ~2 OL calls (catalog page + work details), so steady-state throughput is
 about **1 book / 1.5 s**. Plan from there:
 
@@ -171,8 +171,8 @@ State in MongoDB is always consistent — interruption never loses progress.
   partition by `--subjects` across instances.
 - **OL throttling.** Don't drop the 0.5 s rate-limit. OL will start
   returning 429s and the crawler doesn't retry — it just logs and skips.
-- **Subject coverage.** [`INGEST_SUBJECTS`](../scripts/ol_ingest.py) holds
-  the ingest-only superset; [`GENRE_TO_OL_SUBJECT`](../src/mylm/rag/open_library.py)
+- **Subject coverage.** [`INGEST_SUBJECTS`](https://github.com/Azayzel/my-lm/blob/main/scripts/ol_ingest.py) holds
+  the ingest-only superset; [`GENRE_TO_OL_SUBJECT`](https://github.com/Azayzel/my-lm/blob/main/src/mylm/rag/open_library.py)
   is the user-genre → slug lookup the recommender uses. Add to the former to
   expand crawl coverage; add to the latter only if a user-facing genre needs
   a new mapping.

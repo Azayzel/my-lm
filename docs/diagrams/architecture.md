@@ -1,6 +1,6 @@
 # My-LM System Architecture
 
-This diagram is generated from [architecture.yaml](architecture.yaml) and rendered with Mermaid for instant viewing on GitHub. The same YAML is the input to the [VSDX skill](../../.github/skills/VISIO.md) for producing an editable Visio file.
+This diagram is generated from [architecture.yaml](https://github.com/Azayzel/my-lm/blob/main/docs/diagrams/architecture.yaml) and rendered with Mermaid for instant viewing on GitHub. The same YAML is the input to the [VSDX skill](https://github.com/Azayzel/my-lm/blob/main/.github/skills/VISIO.md) for producing an editable Visio file.
 
 ```mermaid
 flowchart LR

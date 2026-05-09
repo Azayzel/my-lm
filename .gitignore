@@ -50,6 +50,10 @@ benchmark_results/
 # Tooling caches
 .claude/
 
+# MkDocs build output
+site/
+data/ol_ingest_status.json
+
 # Secrets — never commit
 .env
 .env.*
