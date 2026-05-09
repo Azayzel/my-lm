@@ -63,6 +63,11 @@ contextBridge.exposeInMainWorld("My", {
     },
   },
 
+  // OpenLibrary ingest service heartbeat
+  ingest: {
+    status: () => ipcRenderer.invoke("ingest:status"),
+  },
+
   // Curated model catalog
   catalog: {
     list: (vramGb?: number) => ipcRenderer.invoke("catalog:list", vramGb),

@@ -3487,6 +3487,106 @@ function updateBooksUI() {
   }
 }
 
+// ─── OpenLibrary ingest status polling ─────────────────────────────────────
+const ingestPanel = $<HTMLElement>("#ingest-status-panel");
+const ingestPill = $<HTMLElement>("#ingest-pill");
+const ingestPillText = $<HTMLElement>("#ingest-pill-text");
+const ingestSubject = $<HTMLElement>("#ingest-subject");
+const ingestCounts = $<HTMLElement>("#ingest-counts");
+const ingestProgressBar = $<HTMLElement>("#ingest-progress-bar");
+const ingestAge = $<HTMLElement>("#ingest-age");
+
+// Heartbeat is considered stale if it hasn't been touched in this many seconds.
+// During a normal pass it's rewritten on every subject change (~1–2 min between
+// updates with `--per-subject 100`), so 10 minutes is a comfortable threshold.
+const INGEST_STALE_AFTER_S = 600;
+
+function fmtRelativeAge(seconds: number): string {
+  if (seconds < 60) return `${Math.round(seconds)} s ago`;
+  if (seconds < 3600) return `${Math.round(seconds / 60)} min ago`;
+  return `${(seconds / 3600).toFixed(1)} h ago`;
+}
+
+async function pollIngestStatus() {
+  try {
+    const res = await window.My.ingest.status();
+    if (!res.ok || !res.data) {
+      ingestPill.dataset.state = "missing";
+      ingestPillText.textContent = "Service not running";
+      ingestSubject.textContent = "Heartbeat file missing — install the Windows service.";
+      ingestCounts.textContent = "";
+      ingestProgressBar.style.width = "0%";
+      ingestAge.textContent = "";
+      return;
+    }
+
+    const hb = res.data;
+    const ageS = res.ageSeconds ?? 0;
+    const stale = ageS > INGEST_STALE_AFTER_S;
+    const state = stale ? "stale" : (hb.status || "unknown");
+    ingestPill.dataset.state = state;
+    ingestPillText.textContent = stale
+      ? "Stale heartbeat"
+      : (hb.status || "unknown").replace(/^./, (c) => c.toUpperCase());
+
+    const subj = hb.current_subject || "—";
+    const idx = hb.subject_index ?? 0;
+    const total = hb.subject_total ?? 0;
+    if (total > 0) {
+      ingestSubject.textContent = `[${idx}/${total}] ${subj}`;
+      ingestProgressBar.style.width = `${Math.min(100, (idx / total) * 100)}%`;
+    } else {
+      ingestSubject.textContent = subj;
+      ingestProgressBar.style.width = "0%";
+    }
+
+    const t = hb.totals || hb.last_pass_totals;
+    if (t) {
+      ingestCounts.textContent = `pass ${hb.pass_num ?? "?"} · +${t.inserted} ✎${t.updated} ↷${t.skipped}${t.errors ? ` ⚠${t.errors}` : ""}`;
+    } else {
+      ingestCounts.textContent = `pass ${hb.pass_num ?? "?"}`;
+    }
+
+    ingestAge.textContent = `updated ${fmtRelativeAge(ageS)}`;
+  } catch (e) {
+    ingestPill.dataset.state = "missing";
+    ingestPillText.textContent = "Status unavailable";
+    ingestSubject.textContent = String(e);
+    ingestCounts.textContent = "";
+    ingestProgressBar.style.width = "0%";
+  }
+}
+
+// Poll only while the Books screen is visible to avoid wasted IPC traffic.
+let _ingestPollTimer: number | null = null;
+function startIngestPolling() {
+  if (_ingestPollTimer !== null) return;
+  void pollIngestStatus();
+  _ingestPollTimer = window.setInterval(() => {
+    void pollIngestStatus();
+  }, 5000);
+}
+function stopIngestPolling() {
+  if (_ingestPollTimer !== null) {
+    window.clearInterval(_ingestPollTimer);
+    _ingestPollTimer = null;
+  }
+}
+
+// Track Books screen visibility via the existing nav-button click flow.
+new MutationObserver(() => {
+  const visible = ingestPanel.closest(".screen")?.classList.contains("active");
+  if (visible) startIngestPolling();
+  else stopIngestPolling();
+}).observe(ingestPanel.closest(".screen") as Element, {
+  attributes: true,
+  attributeFilter: ["class"],
+});
+// Kick once on load in case Books is the initial screen.
+if (ingestPanel.closest(".screen")?.classList.contains("active")) {
+  startIngestPolling();
+}
+
 // Tracks book IDs/titles already rendered so repeated queries append not replace
 const _shownBookKeys = new Set<string>();
 

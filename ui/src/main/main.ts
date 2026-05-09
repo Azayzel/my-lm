@@ -570,6 +570,25 @@ ipcMain.handle("books:status", async () => ({
   ready: bookBridge?.isReady() ?? false,
 }));
 
+// ─── Open Library ingest service heartbeat ──────────────────────────────────
+const INGEST_HEARTBEAT_PATH = path.join(ROOT, "data", "ol_ingest_status.json");
+
+ipcMain.handle("ingest:status", async () => {
+  try {
+    if (!fs.existsSync(INGEST_HEARTBEAT_PATH)) {
+      return { ok: false, error: "no_heartbeat" };
+    }
+    const stat = fs.statSync(INGEST_HEARTBEAT_PATH);
+    const raw = fs.readFileSync(INGEST_HEARTBEAT_PATH, "utf-8");
+    const data = JSON.parse(raw);
+    // Surface staleness so the UI can flag a dead daemon
+    const ageSeconds = (Date.now() - stat.mtimeMs) / 1000;
+    return { ok: true, data, ageSeconds, mtime: stat.mtimeMs };
+  } catch (e: unknown) {
+    return { ok: false, error: (e as Error).message };
+  }
+});
+
 // ─── Training ────────────────────────────────────────────────────────────────
 ipcMain.handle("train:start", async (_e, config: TrainConfig) => {
   if (trainBridge?.isRunning()) {

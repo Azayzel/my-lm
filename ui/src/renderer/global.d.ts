@@ -48,6 +48,15 @@ interface MyAPI {
     status(): Promise<{ running: boolean; ready: boolean }>;
     onEvent(cb: (msg: BridgeMsg) => void): () => void;
   };
+  ingest: {
+    status(): Promise<{
+      ok: boolean;
+      data?: IngestHeartbeat;
+      ageSeconds?: number;
+      mtime?: number;
+      error?: string;
+    }>;
+  };
   config: {
     get(): Promise<AppConfig>;
     set(patch: Partial<AppConfig>): Promise<AppConfig>;
@@ -271,6 +280,28 @@ interface BenchmarkResultFile {
   path: string;
   size: number;
   mtime: number;
+}
+
+interface IngestHeartbeat {
+  status: "running" | "idle" | "done" | "stopped" | string;
+  pass_num?: number;
+  pass_started_at?: string;
+  current_subject?: string;
+  subject_index?: number;
+  subject_total?: number;
+  totals?: {
+    inserted: number;
+    updated: number;
+    skipped: number;
+    errors: number;
+  };
+  last_pass_totals?: {
+    inserted: number;
+    updated: number;
+    skipped: number;
+    errors: number;
+  };
+  timestamp?: string;
 }
 
 interface BridgeMsg {
