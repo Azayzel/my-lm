@@ -15,6 +15,11 @@ safetensors==0.7.0
 numpy==2.4.3
 pillow==12.1.1
 
+# ── GGUF runtime (optional) ───────────────────────────────────────────────
+# Needed only if you want to run local .gguf models in Chat via gguf_bridge.py
+# Install manually if your platform requires special wheel/build flags.
+# llama-cpp-python>=0.3.0
+
 # ── Diffusion + prompt conditioning ───────────────────────────────────────
 diffusers==0.37.1
 compel==2.3.1                    # long-prompt support; image_bridge.py
@@ -44,3 +49,6 @@ python-dotenv>=1.0
 sentence-transformers>=2.7
 requests>=2.31
 beautifulsoup4>=4.12
+
+# ── Diagram-as-code (scripts/vsdxgen.py) ──────────────────────────────────
+pyyaml>=6.0

@@ -6,7 +6,7 @@ export interface CatalogEntry {
   id: string; // unique key
   name: string; // display name
   repoId: string; // HF repo id
-  category: "llm" | "image" | "upscaler" | "vae" | "face";
+  category: "llm" | "image" | "upscaler" | "vae" | "face" | "nsfw";
   minVramGb: number; // realistic minimum for comfortable use
   sizeGb: number; // approximate download size
   description: string;
@@ -215,6 +215,20 @@ export const MODEL_CATALOG: CatalogEntry[] = [
       "Fast face detector for the Face Fix pass. Required for ADetailer-style refinement.",
     tags: ["face", "detector", "recommended"],
     targetDir: "face_detector",
+  },
+
+  // ───── NSFW segmentation ─────────────────────────────────────────────────
+  {
+    id: "nsfw-segmentation",
+    name: "NSFW Segmentation (YOLOv8)",
+    repoId: "NSFW-API/NSFW_Segmentation",
+    category: "nsfw",
+    minVramGb: 1,
+    sizeGb: 0.44,
+    description:
+      "YOLOv8 segmentation models for NSFW region detection. Includes small and extra-large variants.",
+    tags: ["nsfw", "segmentation", "yolo"],
+    targetDir: "nsfw_segmentation",
   },
 
   // ───── Preview VAEs ─────────────────────────────────────────────────────

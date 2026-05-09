@@ -14,6 +14,7 @@ export class ImageBridge {
     private outputDir: string,
     private python: string = "python",
     private faceDetectorPath: string = "",
+    private nsfwSegModelDir: string = "",
   ) {}
 
   isRunning() {
@@ -28,13 +29,10 @@ export class ImageBridge {
   ): Promise<{ ok: boolean; message?: string; error?: string }> {
     return new Promise((resolve) => {
       const bridge = path.join(this.scriptsDir, "image_bridge.py");
-      const args = [
-        bridge,
-        this.modelDir,
-        this.upscalerPath,
-        this.outputDir,
-      ];
+      const args = [bridge, this.modelDir, this.upscalerPath, this.outputDir];
       if (this.faceDetectorPath) args.push(this.faceDetectorPath);
+      else args.push(""); // placeholder so nsfw_seg_model_dir is at correct index
+      if (this.nsfwSegModelDir) args.push(this.nsfwSegModelDir);
       this.proc = spawn(this.python, args, {
         stdio: ["pipe", "pipe", "pipe"],
       });
@@ -62,8 +60,7 @@ export class ImageBridge {
         } catch (err) {
           // Don't silently swallow parse errors — surface them so the user
           // can see what's happening. Trim very long lines to avoid spam.
-          const preview =
-            line.length > 200 ? line.slice(0, 200) + "…" : line;
+          const preview = line.length > 200 ? line.slice(0, 200) + "…" : line;
           console.error("[image_bridge] JSON parse error:", err, preview);
           onEvent({
             type: "log",

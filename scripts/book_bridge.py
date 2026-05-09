@@ -66,11 +66,16 @@ def get_resources():
     return _db, _embedder
 
 
-def ensure_llm(model_path: str | None):
-    """Load a causal LM for explanation generation. Lazy and cached."""
+def ensure_llm(model_path: str | None, lora_path: str | None = None):
+    """Load a causal LM for explanation generation. Lazy and cached.
+
+    If *lora_path* is provided, loads it as a PEFT adapter on top of *model_path*.
+    The cache key includes the lora_path so switching adapters reloads correctly.
+    """
     if not model_path:
         return None
-    if _llm_state["path"] == model_path and _llm_state["model"] is not None:
+    cache_key = f"{model_path}|{lora_path or ''}"
+    if _llm_state.get("cache_key") == cache_key and _llm_state["model"] is not None:
         return _llm_state
     emit({"type": "status", "message": f"Loading LLM from {model_path}..."})
     try:
@@ -89,11 +94,20 @@ def ensure_llm(model_path: str | None):
             device_map=device_map,
             trust_remote_code=True,
         )
+
+        if lora_path:
+            emit({"type": "status", "message": f"Loading LoRA adapter from {lora_path}..."})
+            from peft import PeftModel
+            from transformers import GenerationConfig
+            model = PeftModel.from_pretrained(model, lora_path)
+            model.generation_config = GenerationConfig(max_length=4096)  # type: ignore[assignment]
+
         model.eval()
         _llm_state["tokenizer"] = tok
         _llm_state["model"] = model
         _llm_state["streamer_cls"] = TextIteratorStreamer
         _llm_state["path"] = model_path
+        _llm_state["cache_key"] = cache_key
     except Exception as e:
         emit({"type": "error", "message": f"LLM load failed: {e}"})
         return None
@@ -191,6 +205,7 @@ def run_query(request: dict) -> None:
     num_candidates = max(limit * 10, 200)
     mongo_filter = request.get("filter") or None
     llm_path = request.get("llm_model_dir")
+    lora_path = request.get("lora_adapter_dir")
 
     if not query_text and not user_id and not goodreads_user:
         emit({"type": "error", "message": "query, user_id, or goodreads_user is required"})
@@ -213,7 +228,7 @@ def run_query(request: dict) -> None:
         from mylm.rag import fetch_read_shelf
 
         emit({"type": "status", "message": f"Fetching Goodreads profile: {goodreads_user}..."})
-        gr_books = fetch_read_shelf(goodreads_user, max_books=80)
+        gr_books = fetch_read_shelf(goodreads_user, max_books=2000)
         if not gr_books:
             emit({"type": "log", "text": f"No public books found for Goodreads user '{goodreads_user}' (profile may be private or username wrong)"})
         else:
@@ -298,7 +313,7 @@ def run_query(request: dict) -> None:
 
     # If an LLM path is provided, run a RAG generation pass
     if llm_path:
-        llm = ensure_llm(llm_path)
+        llm = ensure_llm(llm_path, lora_path or None)
         if llm:
             system = build_system_prompt()
             user = build_user_prompt(query_text or "Recommend books based on my taste.", books)

@@ -1,12 +1,21 @@
-import { app, BrowserWindow, ipcMain, dialog, shell } from "electron";
+import {
+  app,
+  BrowserWindow,
+  ipcMain,
+  dialog,
+  shell,
+  nativeImage,
+} from "electron";
 import * as path from "path";
 import * as fs from "fs";
+import { createHash } from "crypto";
 import { spawn } from "child_process";
 import { LLMBridge } from "./llmBridge";
 import { ImageBridge } from "./imageBridge";
 import { HistoryStore } from "./historyStore";
 import { ModelManager } from "./modelManager";
 import { TrainBridge, TrainConfig } from "./trainBridge";
+import { BenchmarkBridge, BenchmarkConfig } from "./benchmarkBridge";
 import { BookBridge } from "./bookBridge";
 import { PromptStore, SavedPrompt } from "./promptStore";
 import { MODEL_CATALOG, filterByVram } from "./modelCatalog";
@@ -17,7 +26,9 @@ const ROOT = path.resolve(__dirname, "..", "..", ".."); // ui/../.. => repo root
 const SCRIPTS_DIR = path.join(ROOT, "scripts");
 const MODELS_DIR = path.join(ROOT, "models");
 const OUTPUTS_DIR = path.join(ROOT, "outputs");
+const BENCHMARK_RESULTS_DIR = path.join(ROOT, "benchmark_results");
 const LLM_MODEL_DIR = path.join(MODELS_DIR, "qwen3.5-2b");
+const LORA_MODEL_DIR = path.join(MODELS_DIR, "book-rec-lora");
 const IMAGE_MODEL_DIR = path.join(MODELS_DIR, "realvisxl-v4");
 const UPSCALER_PATH = path.join(MODELS_DIR, "upscalers", "4x-UltraSharp.pth");
 const FACE_DETECTOR_PATH = path.join(
@@ -25,6 +36,7 @@ const FACE_DETECTOR_PATH = path.join(
   "face_detector",
   "face_yolov8n.pt",
 );
+const NSFW_SEG_MODEL_DIR = path.join(MODELS_DIR, "nsfw_segmentation");
 
 // Resolve the Python executable: prefer the project .venv, then fall back to PATH
 function resolvePython(): string {
@@ -48,6 +60,7 @@ let mainWindow: BrowserWindow | null = null;
 let llmBridge: LLMBridge | null = null;
 let imageBridge: ImageBridge | null = null;
 let trainBridge: TrainBridge | null = null;
+let benchmarkBridge: BenchmarkBridge | null = null;
 let bookBridge: BookBridge | null = null;
 const historyStore = new HistoryStore(
   path.join(app.getPath("userData"), "history.json"),
@@ -59,6 +72,43 @@ const modelManager = new ModelManager(SCRIPTS_DIR, MODELS_DIR);
 const configStore = new ConfigStore(
   path.join(app.getPath("userData"), "config.json"),
 );
+const THUMB_CACHE_DIR = path.join(app.getPath("userData"), "thumb-cache");
+
+function resolveRepoPath(p?: string): string {
+  if (!p) return "";
+  return path.isAbsolute(p) ? p : path.join(ROOT, p);
+}
+
+function sanitizeRepoFolderName(repoId: string): string {
+  return repoId
+    .split("/")
+    .filter(Boolean)
+    .join("-")
+    .replace(/[^a-zA-Z0-9._-]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .toLowerCase();
+}
+
+function resolveModelDownloadTarget(repoId: string, targetDir: string): string {
+  const raw = (targetDir || "").trim();
+  const repoFolder = sanitizeRepoFolderName(repoId) || "model";
+
+  if (!raw) return path.join(MODELS_DIR, repoFolder);
+
+  if (path.isAbsolute(raw)) {
+    const normalized = path.normalize(raw);
+    if (normalized.toLowerCase() === path.normalize(MODELS_DIR).toLowerCase()) {
+      return path.join(normalized, repoFolder);
+    }
+    return normalized;
+  }
+
+  const normalizedRel = path.normalize(raw);
+  if (normalizedRel === ".") return path.join(MODELS_DIR, repoFolder);
+  return path.join(MODELS_DIR, normalizedRel);
+}
+fs.mkdirSync(THUMB_CACHE_DIR, { recursive: true });
 
 // Seed config from .env on first run (so existing users don't lose their setup)
 if (!configStore.isMongoConfigured()) {
@@ -115,6 +165,11 @@ function runCommand(
   });
 }
 
+async function pythonModuleAvailable(moduleName: string): Promise<boolean> {
+  const result = await runCommand(PYTHON, ["-c", `import ${moduleName}`]);
+  return result.ok;
+}
+
 // ─── Window ───────────────────────────────────────────────────────────────────
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -142,6 +197,7 @@ function createWindow() {
     mainWindow?.webContents.send("app:paths", {
       outputs: OUTPUTS_DIR,
       llmModel: LLM_MODEL_DIR,
+      loraModel: fs.existsSync(LORA_MODEL_DIR) ? LORA_MODEL_DIR : "",
       imageModel: IMAGE_MODEL_DIR,
       python: PYTHON,
     });
@@ -165,6 +221,7 @@ app.on("window-all-closed", () => {
   llmBridge?.kill();
   imageBridge?.kill();
   trainBridge?.stop();
+  benchmarkBridge?.stop();
   bookBridge?.kill();
   if (process.platform !== "darwin") app.quit();
 });
@@ -180,8 +237,24 @@ ipcMain.on("window:close", () => mainWindow?.close());
 // ─── LLM ──────────────────────────────────────────────────────────────────────
 ipcMain.handle("llm:start", async (_e, modelPath: string) => {
   if (llmBridge?.isRunning()) return { ok: true, message: "Already running" };
-  const mPath = modelPath || LLM_MODEL_DIR;
-  llmBridge = new LLMBridge(SCRIPTS_DIR, mPath, PYTHON);
+  const mPath = modelPath ? resolveRepoPath(modelPath) : LLM_MODEL_DIR;
+  const lowerName = path.basename(mPath).toLowerCase();
+  const bridgeScript = lowerName.endsWith(".gguf")
+    ? "gguf_bridge.py"
+    : "llm_bridge.py";
+
+  if (bridgeScript === "gguf_bridge.py") {
+    const hasLlamaCpp = await pythonModuleAvailable("llama_cpp");
+    if (!hasLlamaCpp) {
+      return {
+        ok: false,
+        error:
+          "GGUF runtime dependency missing. Install with: pip install llama-cpp-python",
+      };
+    }
+  }
+
+  llmBridge = new LLMBridge(SCRIPTS_DIR, mPath, PYTHON, bridgeScript);
   return llmBridge.start((msg) => {
     mainWindow?.webContents.send("llm:event", msg);
   });
@@ -206,6 +279,55 @@ ipcMain.handle("llm:status", async () => ({
   ready: llmBridge?.isReady() ?? false,
 }));
 
+// ─── Vision (one-shot image description) ───────────────────────────────────
+ipcMain.handle(
+  "vision:describeImage",
+  async (_e, imagePath: string, hint?: string) => {
+    const resolvedImage = path.resolve(imagePath);
+    if (!fs.existsSync(resolvedImage)) {
+      return { ok: false, error: `Image not found: ${resolvedImage}` };
+    }
+
+    const script = path.join(SCRIPTS_DIR, "image_describe.py");
+    const args = [script, resolvedImage];
+    if (hint && hint.trim()) args.push(hint.trim());
+
+    const result = await runCommand(PYTHON, args);
+    const lines = result.stdout
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter(Boolean);
+
+    // Parse the last JSON-ish line if present.
+    let parsed: any = null;
+    for (let i = lines.length - 1; i >= 0; i -= 1) {
+      const line = lines[i];
+      if (!line.startsWith("{")) continue;
+      try {
+        parsed = JSON.parse(line);
+        break;
+      } catch {
+        // keep searching
+      }
+    }
+
+    if (parsed && parsed.ok && parsed.caption) {
+      return {
+        ok: true,
+        caption: String(parsed.caption),
+        model: String(parsed.model || ""),
+      };
+    }
+
+    const error =
+      (parsed && parsed.error ? String(parsed.error) : "") ||
+      result.stderr.trim() ||
+      `image_describe exited with code ${result.code}`;
+
+    return { ok: false, error };
+  },
+);
+
 // ─── Image Generation ─────────────────────────────────────────────────────────
 ipcMain.handle("image:start", async (_e, modelPath?: string) => {
   if (imageBridge?.isRunning()) return { ok: true, message: "Already running" };
@@ -217,6 +339,7 @@ ipcMain.handle("image:start", async (_e, modelPath?: string) => {
     OUTPUTS_DIR,
     PYTHON,
     FACE_DETECTOR_PATH,
+    NSFW_SEG_MODEL_DIR,
   );
   return imageBridge.start((msg) => {
     mainWindow?.webContents.send("image:event", msg);
@@ -279,7 +402,7 @@ ipcMain.handle("media:list", async (_e, subdir?: string) => {
   const dir = subdir ? path.join(OUTPUTS_DIR, subdir) : OUTPUTS_DIR;
   if (!fs.existsSync(dir)) return { folders: [], files: [] };
 
-  const entries = fs.readdirSync(dir, { withFileTypes: true });
+  const entries = await fs.promises.readdir(dir, { withFileTypes: true });
 
   const folders = entries
     .filter((e) => e.isDirectory())
@@ -291,18 +414,65 @@ ipcMain.handle("media:list", async (_e, subdir?: string) => {
     .sort((a, b) => a.name.localeCompare(b.name));
 
   const files = entries
-    .filter(
-      (e) => e.isFile() && /\.(png|jpg|jpeg|webp)$/i.test(e.name),
-    )
-    .map((e) => {
-      const full = path.join(dir, e.name);
-      const stat = fs.statSync(full);
-      return { name: e.name, path: full, size: stat.size, mtime: stat.mtimeMs };
-    })
-    .sort((a, b) => b.mtime - a.mtime);
+    .filter((e) => e.isFile() && /\.(png|jpg|jpeg|webp)$/i.test(e.name))
+    .map((e) => ({
+      name: e.name,
+      path: path.join(dir, e.name),
+      size: 0,
+      mtime: 0,
+    }))
+    // Most generated files include timestamps in the filename, so this is fast and stable.
+    .sort((a, b) => b.name.localeCompare(a.name, undefined, { numeric: true }));
 
   return { folders, files };
 });
+
+ipcMain.handle(
+  "media:getThumbnail",
+  async (_e, filePath: string, maxSize = 360) => {
+    try {
+      const resolved = path.resolve(filePath);
+      const outputsResolved = path.resolve(OUTPUTS_DIR);
+      if (!resolved.startsWith(outputsResolved)) {
+        return { ok: false, error: "File is outside outputs directory" };
+      }
+      if (!fs.existsSync(resolved)) {
+        return { ok: false, error: "File not found" };
+      }
+
+      const stat = await fs.promises.stat(resolved);
+      const key = createHash("sha1")
+        .update(`${resolved}|${stat.mtimeMs}|${maxSize}`)
+        .digest("hex");
+      const cachedPath = path.join(THUMB_CACHE_DIR, `${key}.png`);
+
+      if (fs.existsSync(cachedPath)) {
+        return { ok: true, path: cachedPath, cached: true };
+      }
+
+      const img = nativeImage.createFromPath(resolved);
+      if (img.isEmpty()) {
+        return { ok: false, error: "Could not decode image" };
+      }
+
+      const sourceSize = img.getSize();
+      const maxDim = Math.max(sourceSize.width, sourceSize.height);
+      const scale = maxDim > maxSize ? maxSize / maxDim : 1;
+      const targetW = Math.max(1, Math.round(sourceSize.width * scale));
+      const targetH = Math.max(1, Math.round(sourceSize.height * scale));
+      const thumb = img.resize({
+        width: targetW,
+        height: targetH,
+        quality: "good",
+      });
+      await fs.promises.writeFile(cachedPath, thumb.toPNG());
+
+      return { ok: true, path: cachedPath, cached: false };
+    } catch (e: any) {
+      return { ok: false, error: e.message };
+    }
+  },
+);
 
 ipcMain.handle("media:createFolder", async (_e, name: string) => {
   try {
@@ -368,7 +538,8 @@ ipcMain.handle("books:start", async () => {
   if (!configStore.isMongoConfigured()) {
     return {
       ok: false,
-      error: "MongoDB not configured. Go to Settings and set up a connection first.",
+      error:
+        "MongoDB not configured. Go to Settings and set up a connection first.",
     };
   }
   bookBridge = new BookBridge(SCRIPTS_DIR, PYTHON, configStore.toEnv());
@@ -399,13 +570,38 @@ ipcMain.handle("books:status", async () => ({
   ready: bookBridge?.isReady() ?? false,
 }));
 
+// ─── Open Library ingest service heartbeat ──────────────────────────────────
+const INGEST_HEARTBEAT_PATH = path.join(ROOT, "data", "ol_ingest_status.json");
+
+ipcMain.handle("ingest:status", async () => {
+  try {
+    if (!fs.existsSync(INGEST_HEARTBEAT_PATH)) {
+      return { ok: false, error: "no_heartbeat" };
+    }
+    const stat = fs.statSync(INGEST_HEARTBEAT_PATH);
+    const raw = fs.readFileSync(INGEST_HEARTBEAT_PATH, "utf-8");
+    const data = JSON.parse(raw);
+    // Surface staleness so the UI can flag a dead daemon
+    const ageSeconds = (Date.now() - stat.mtimeMs) / 1000;
+    return { ok: true, data, ageSeconds, mtime: stat.mtimeMs };
+  } catch (e: unknown) {
+    return { ok: false, error: (e as Error).message };
+  }
+});
+
 // ─── Training ────────────────────────────────────────────────────────────────
 ipcMain.handle("train:start", async (_e, config: TrainConfig) => {
   if (trainBridge?.isRunning()) {
     return { ok: false, error: "Training already running" };
   }
+  const resolvedConfig: TrainConfig = {
+    ...config,
+    model_path: resolveRepoPath(config.model_path),
+    dataset_path: resolveRepoPath(config.dataset_path),
+    output_dir: resolveRepoPath(config.output_dir),
+  };
   trainBridge = new TrainBridge(SCRIPTS_DIR, PYTHON);
-  const result = trainBridge.start(config, (msg) => {
+  const result = trainBridge.start(resolvedConfig, (msg) => {
     mainWindow?.webContents.send("train:event", msg);
   });
   return result;
@@ -426,9 +622,18 @@ ipcMain.handle(
   async (_e, basePath: string, adapterPath: string, outputPath: string) => {
     return new Promise<{ ok: boolean; error?: string }>((resolve) => {
       const script = path.join(SCRIPTS_DIR, "merge_lora.py");
-      const proc = spawn(PYTHON, [script, basePath, adapterPath, outputPath], {
-        stdio: ["ignore", "pipe", "pipe"],
-      });
+      const proc = spawn(
+        PYTHON,
+        [
+          script,
+          resolveRepoPath(basePath),
+          resolveRepoPath(adapterPath),
+          resolveRepoPath(outputPath),
+        ],
+        {
+          stdio: ["ignore", "pipe", "pipe"],
+        },
+      );
       let stderr = "";
       proc.stdout.on("data", (d: Buffer) => {
         mainWindow?.webContents.send("train:event", {
@@ -448,6 +653,82 @@ ipcMain.handle(
   },
 );
 
+// ─── Benchmarking (agent_bench.py) ───────────────────────────────────────────
+ipcMain.handle("bench:start", async (_e, config: BenchmarkConfig) => {
+  if (benchmarkBridge?.isRunning()) {
+    return { ok: false, error: "Benchmark already running" };
+  }
+  benchmarkBridge = new BenchmarkBridge(SCRIPTS_DIR, PYTHON);
+  return benchmarkBridge.start(config, (msg) => {
+    mainWindow?.webContents.send("bench:event", msg);
+  });
+});
+
+ipcMain.handle("bench:stop", async () => {
+  benchmarkBridge?.stop();
+  return { ok: true };
+});
+
+ipcMain.handle("bench:status", async () => ({
+  running: benchmarkBridge?.isRunning() ?? false,
+  resultsDir: BENCHMARK_RESULTS_DIR,
+}));
+
+ipcMain.handle("bench:listResults", async () => {
+  try {
+    if (!fs.existsSync(BENCHMARK_RESULTS_DIR)) {
+      return { ok: true, dir: BENCHMARK_RESULTS_DIR, files: [] };
+    }
+    const entries = fs.readdirSync(BENCHMARK_RESULTS_DIR, {
+      withFileTypes: true,
+    });
+    const files = entries
+      .filter((e) => e.isFile() && e.name.toLowerCase().endsWith(".json"))
+      .map((e) => {
+        const full = path.join(BENCHMARK_RESULTS_DIR, e.name);
+        const stat = fs.statSync(full);
+        return {
+          name: e.name,
+          path: full,
+          size: stat.size,
+          mtime: stat.mtimeMs,
+        };
+      })
+      .sort((a, b) => b.mtime - a.mtime);
+    return { ok: true, dir: BENCHMARK_RESULTS_DIR, files };
+  } catch (e) {
+    return {
+      ok: false,
+      dir: BENCHMARK_RESULTS_DIR,
+      files: [],
+      error: (e as Error).message,
+    };
+  }
+});
+
+ipcMain.handle("bench:getResult", async (_e, filePath: string) => {
+  try {
+    // Restrict reads to the benchmark results directory.
+    const full = path.resolve(filePath);
+    const dir = path.resolve(BENCHMARK_RESULTS_DIR);
+    if (!full.startsWith(dir + path.sep) && full !== dir) {
+      return { ok: false, error: "Path outside benchmark results directory" };
+    }
+    if (!fs.existsSync(full)) return { ok: false, error: "File not found" };
+    const text = fs.readFileSync(full, "utf-8");
+    const data = JSON.parse(text);
+    return { ok: true, data };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+});
+
+ipcMain.handle("bench:openResultsDir", async () => {
+  fs.mkdirSync(BENCHMARK_RESULTS_DIR, { recursive: true });
+  shell.openPath(BENCHMARK_RESULTS_DIR);
+  return { ok: true };
+});
+
 // ─── Dataset file picker ─────────────────────────────────────────────────────
 ipcMain.handle(
   "dialog:openFile",
@@ -466,7 +747,8 @@ ipcMain.handle("models:list", async () => modelManager.listModels());
 ipcMain.handle(
   "models:download",
   async (_e, repoId: string, targetDir: string, type: string) => {
-    modelManager.download(repoId, targetDir, type, PYTHON, (msg) => {
+    const resolvedTarget = resolveModelDownloadTarget(repoId, targetDir);
+    modelManager.download(repoId, resolvedTarget, type, PYTHON, (msg) => {
       mainWindow?.webContents.send("models:download:event", msg);
     });
     return { ok: true };
@@ -474,7 +756,7 @@ ipcMain.handle(
 );
 
 ipcMain.handle("models:exists", async (_e, modelPath: string) =>
-  fs.existsSync(modelPath),
+  fs.existsSync(resolveRepoPath(modelPath)),
 );
 
 // ─── Model catalog (curated, filterable by VRAM) ─────────────────────────
@@ -531,17 +813,24 @@ ipcMain.handle("system:diagnostics", async () => {
 ipcMain.handle("system:gpuInfo", async () => {
   const pyGpuScript = [
     "import json",
-    "out={'torch_available': False, 'cuda_available': False, 'cuda_version': None, 'device_count': 0, 'devices': []}",
+    "out={'torch_available':False,'cuda_available':False,'cuda_version':None,'device_count':0,'devices':[]}",
+    "_CORES_PER_SM={(2,0):32,(2,1):48,(3,0):192,(3,2):192,(3,5):192,(3,7):192,(5,0):128,(5,2):128,(5,3):128,(6,0):64,(6,1):128,(6,2):128,(7,0):64,(7,2):64,(7,5):64,(8,0):64,(8,6):128,(8,7):128,(8,9):128,(9,0):128}",
+    "_TENSOR_PER_SM={(7,0):8,(7,2):8,(7,5):8,(8,0):4,(8,6):4,(8,7):4,(8,9):4,(9,0):4}",
     "try:",
     "    import torch",
-    "    out['torch_available'] = True",
-    "    out['cuda_available'] = bool(torch.cuda.is_available())",
-    "    out['cuda_version'] = torch.version.cuda",
+    "    out['torch_available']=True",
+    "    out['cuda_available']=bool(torch.cuda.is_available())",
+    "    out['cuda_version']=torch.version.cuda",
     "    if out['cuda_available']:",
-    "        out['device_count'] = torch.cuda.device_count()",
+    "        out['device_count']=torch.cuda.device_count()",
     "        for i in range(out['device_count']):",
-    "            props = torch.cuda.get_device_properties(i)",
-    "            out['devices'].append({'index': i, 'name': props.name, 'total_memory_gb': round(props.total_memory/(1024**3), 2), 'major': props.major, 'minor': props.minor})",
+    "            p=torch.cuda.get_device_properties(i)",
+    "            cc=(p.major,p.minor)",
+    "            sm=p.multi_processor_count",
+    "            cps=_CORES_PER_SM.get(cc,_CORES_PER_SM.get((p.major,0),128))",
+    "            tps=_TENSOR_PER_SM.get(cc,None)",
+    "            l2=round(getattr(p,'l2_cache_size',0)/1024**2,2)",
+    "            out['devices'].append({'index':i,'name':p.name,'total_memory_gb':round(p.total_memory/1024**3,2),'major':p.major,'minor':p.minor,'multi_processor_count':sm,'cuda_cores':sm*cps,'tensor_cores':sm*tps if tps else None,'l2_cache_size_mb':l2,'warp_size':getattr(p,'warp_size',32)})",
     "except Exception as e:",
     "    out['error']=str(e)",
     "print(json.dumps(out))",
@@ -558,7 +847,7 @@ ipcMain.handle("system:gpuInfo", async () => {
   }
 
   const smi = await runCommand("nvidia-smi", [
-    "--query-gpu=name,driver_version,memory.total,temperature.gpu,utilization.gpu",
+    "--query-gpu=name,driver_version,memory.total,memory.used,memory.free,temperature.gpu,utilization.gpu,power.draw,power.limit,clocks.current.graphics,clocks.current.memory,pcie.link.gen.current,pcie.link.width.current",
     "--format=csv,noheader,nounits",
   ]);
 
@@ -568,15 +857,39 @@ ipcMain.handle("system:gpuInfo", async () => {
         .map((line) => line.trim())
         .filter(Boolean)
         .map((line) => {
-          const [name, driver, memoryMb, tempC, util] = line
-            .split(",")
-            .map((part) => part.trim());
+          const [
+            name,
+            driver,
+            memTotal,
+            memUsed,
+            memFree,
+            tempC,
+            util,
+            pwrDraw,
+            pwrLimit,
+            gpuClock,
+            memClock,
+            pcieGen,
+            pcieWidth,
+          ] = line.split(",").map((part) => part.trim());
+          const parseNum = (v: string) => {
+            const n = parseFloat(v);
+            return isNaN(n) ? null : n;
+          };
           return {
             name,
             driverVersion: driver,
-            memoryMb: Number(memoryMb),
+            memoryMb: Number(memTotal),
+            memoryUsedMb: Number(memUsed),
+            memoryFreeMb: Number(memFree),
             temperatureC: Number(tempC),
             utilizationPercent: Number(util),
+            powerDrawW: parseNum(pwrDraw),
+            powerLimitW: parseNum(pwrLimit),
+            gpuClockMhz: parseNum(gpuClock),
+            memClockMhz: parseNum(memClock),
+            pcieLinkGen: parseNum(pcieGen),
+            pcieLinkWidth: parseNum(pcieWidth),
           };
         })
     : [];
@@ -588,6 +901,120 @@ ipcMain.handle("system:gpuInfo", async () => {
     nvidia: nvidiaRows,
     nvidiaError: smi.ok ? null : smi.stderr || "nvidia-smi not available",
   };
+});
+
+// ── GPU Poll (lightweight, for live telemetry) ───────────────────────────────
+ipcMain.handle("system:gpuPoll", async () => {
+  const smi = await runCommand("nvidia-smi", [
+    "--query-gpu=utilization.gpu,temperature.gpu,power.draw,memory.used,memory.total,clocks.current.graphics",
+    "--format=csv,noheader,nounits",
+  ]);
+  if (!smi.ok) return { ok: false, error: smi.stderr, gpus: [] };
+  const parseNum = (v: string) => {
+    const n = parseFloat(v.trim());
+    return isNaN(n) ? null : n;
+  };
+  const gpus = smi.stdout
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [util, temp, power, memUsed, memTotal, gpuClock] = line.split(",");
+      return {
+        utilizationPercent: parseNum(util),
+        temperatureC: parseNum(temp),
+        powerDrawW: parseNum(power),
+        memoryUsedMb: parseNum(memUsed),
+        memoryTotalMb: parseNum(memTotal),
+        gpuClockMhz: parseNum(gpuClock),
+      };
+    });
+  return { ok: true, gpus, timestamp: Date.now() };
+});
+
+// ── GPU Processes ─────────────────────────────────────────────────────────────
+ipcMain.handle("system:gpuProcesses", async () => {
+  const smi = await runCommand("nvidia-smi", [
+    "--query-compute-apps=pid,process_name,used_gpu_memory",
+    "--format=csv,noheader,nounits",
+  ]);
+  if (!smi.ok) return { ok: false, processes: [], error: smi.stderr };
+  const processes = smi.stdout
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const parts = line.split(",").map((p) => p.trim());
+      return {
+        pid: parts[0] ?? "",
+        name: parts[1] ?? "",
+        memoryMb: parseFloat(parts[2] ?? "0") || 0,
+      };
+    });
+  return { ok: true, processes };
+});
+
+// ── GPU Health ────────────────────────────────────────────────────────────────
+ipcMain.handle("system:gpuHealth", async () => {
+  const smi = await runCommand("nvidia-smi", [
+    "--query-gpu=pstate,fan.speed,ecc.errors.corrected.volatile.total,ecc.errors.uncorrected.volatile.total,retired_pages.single_bit_ecc.count,retired_pages.double_bit.count",
+    "--format=csv,noheader,nounits",
+  ]);
+  if (!smi.ok) return { ok: false, error: smi.stderr, gpus: [] };
+  const parseNum = (v: string) => {
+    const n = parseFloat(v.trim());
+    return isNaN(n) ? null : n;
+  };
+  const gpus = smi.stdout
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [
+        pstate,
+        fanSpeed,
+        eccCorr,
+        eccUncorr,
+        retiredSingle,
+        retiredDouble,
+      ] = line.split(",");
+      return {
+        pstate: pstate?.trim() ?? "N/A",
+        fanSpeedPercent: parseNum(fanSpeed),
+        eccCorrected: parseNum(eccCorr),
+        eccUncorrected: parseNum(eccUncorr),
+        retiredSingleBit: parseNum(retiredSingle),
+        retiredDoubleBit: parseNum(retiredDouble),
+      };
+    });
+  return { ok: true, gpus };
+});
+
+ipcMain.handle("system:clearThumbnailCache", async () => {
+  try {
+    await fs.promises.mkdir(THUMB_CACHE_DIR, { recursive: true });
+    const names = await fs.promises.readdir(THUMB_CACHE_DIR);
+    let removedFiles = 0;
+    let removedBytes = 0;
+
+    for (const name of names) {
+      const full = path.join(THUMB_CACHE_DIR, name);
+      try {
+        const stat = await fs.promises.stat(full);
+        if (stat.isFile()) {
+          removedBytes += stat.size;
+          await fs.promises.unlink(full);
+          removedFiles += 1;
+        }
+      } catch {
+        // Ignore files that disappear during cleanup.
+      }
+    }
+
+    return { ok: true, removedFiles, removedBytes };
+  } catch (e: any) {
+    return { ok: false, error: e.message };
+  }
 });
 
 // ─── Config / Settings ───────────────────────────────────────────────────────

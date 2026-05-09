@@ -1,7 +1,18 @@
-"""QLoRA fine-tuning script for Qwen3.5-2B on 6 GB VRAM."""
+"""QLoRA fine-tuning script for Qwen3.5-2B on 6 GB VRAM.
+
+Usage:
+  python scripts/train_qlora.py
+  python scripts/train_qlora.py --data datasets/motogp/train.jsonl \
+      --output-dir models/My-lm-motogp-lora --epochs 3
+"""
+
+from __future__ import annotations
+
+import argparse
+from pathlib import Path
 
 from datasets import load_dataset
-from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
+from peft import LoraConfig, PeftModel, get_peft_model, prepare_model_for_kbit_training
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
@@ -10,64 +21,120 @@ from transformers import (
     TrainingArguments,
 )
 
-model_id = "../models/qwen3.5-2b"
 
-# 4-bit quantization config
-bnb_config = BitsAndBytesConfig(
-    load_in_4bit=True,
-    bnb_4bit_quant_type="nf4",
-    bnb_4bit_compute_dtype="bfloat16",
-    bnb_4bit_use_double_quant=True,
-)
+def parse_args() -> argparse.Namespace:
+    # Repo root is one level above this script
+    _repo = Path(__file__).resolve().parent.parent
 
-tokenizer = AutoTokenizer.from_pretrained(model_id)
-tokenizer.pad_token = tokenizer.eos_token
-
-model = AutoModelForCausalLM.from_pretrained(
-    model_id,
-    quantization_config=bnb_config,
-    device_map="auto",
-)
-model = prepare_model_for_kbit_training(model)
-
-# LoRA config — targets the attention layers
-lora_config = LoraConfig(
-    r=16,
-    lora_alpha=32,
-    target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
-    lora_dropout=0.05,
-    bias="none",
-    task_type="CAUSAL_LM",
-)
-model = get_peft_model(model, lora_config)
-model.print_trainable_parameters()  # Should be ~0.5-2% of total
-
-# Load dataset
-dataset = load_dataset("json", data_files="../datasets/train.jsonl", split="train")
+    p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    p.add_argument("--model-id", default=str(_repo / "models" / "qwen3.5-2b"),
+                   help="HF model id or local path")
+    p.add_argument("--data", type=Path, default=_repo / "datasets" / "train.jsonl",
+                   help="Training JSONL ({\"messages\":[...]} per line)")
+    p.add_argument("--output-dir", type=Path, default=_repo / "models" / "My-lm-lora")
+    p.add_argument("--epochs", type=float, default=3.0)
+    p.add_argument("--lr", type=float, default=2e-4)
+    p.add_argument("--max-length", type=int, default=2048)
+    p.add_argument("--batch-size", type=int, default=1,
+                   help="Per-device batch (keep 1 on 6 GB VRAM)")
+    p.add_argument("--grad-accum", type=int, default=8,
+                   help="Gradient accumulation steps (effective batch = batch * accum)")
+    p.add_argument("--lora-r", type=int, default=16)
+    p.add_argument("--lora-alpha", type=int, default=32)
+    p.add_argument("--lora-dropout", type=float, default=0.05)
+    p.add_argument("--val-data", type=Path, default=None,
+                   help="Validation JSONL for eval_loss (e.g. datasets/books/val.jsonl)")
+    p.add_argument("--resume-from-lora", type=Path, default=None,
+                   help="Stage 2: load an existing LoRA adapter dir and continue fine-tuning it")
+    return p.parse_args()
 
 
-def tokenize(example):
-    text = tokenizer.apply_chat_template(example["messages"], tokenize=False)
-    out = tokenizer(text, truncation=True, max_length=2048, padding="max_length")
-    out["labels"] = out["input_ids"].copy()
-    return out
+def main() -> int:
+    args = parse_args()
+
+    if not args.data.exists():
+        raise SystemExit(f"data file not found: {args.data}")
+
+    # Resolve model_id: if it looks like a local path (contains / or \, or starts
+    # with . / ~), convert to an absolute path so transformers doesn't try to
+    # treat it as a HuggingFace repo id.
+    model_id: str = args.model_id
+    if any(c in model_id for c in ("/", "\\")) or model_id.startswith((".", "~")):
+        model_id = str(Path(model_id).resolve())
+
+    bnb_config = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_compute_dtype="bfloat16",
+        bnb_4bit_use_double_quant=True,
+    )
+
+    tokenizer = AutoTokenizer.from_pretrained(model_id)
+    tokenizer.pad_token = tokenizer.eos_token
+
+    model = AutoModelForCausalLM.from_pretrained(
+        model_id,
+        quantization_config=bnb_config,
+        device_map="auto",
+    )
+    model = prepare_model_for_kbit_training(model)
+
+    if args.resume_from_lora and args.resume_from_lora.exists():
+        print(f"[Stage 2] Loading LoRA adapter from {args.resume_from_lora}")
+        model = PeftModel.from_pretrained(model, str(args.resume_from_lora), is_trainable=True)
+    else:
+        lora_config = LoraConfig(
+            r=args.lora_r,
+            lora_alpha=args.lora_alpha,
+            target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
+            lora_dropout=args.lora_dropout,
+            bias="none",
+            task_type="CAUSAL_LM",
+        )
+        model = get_peft_model(model, lora_config)
+    model.print_trainable_parameters()
+
+    dataset = load_dataset("json", data_files=str(args.data), split="train")
+
+    def tokenize(example):
+        text = tokenizer.apply_chat_template(example["messages"], tokenize=False)
+        out = tokenizer(text, truncation=True, max_length=args.max_length,
+                        padding="max_length")
+        out["labels"] = out["input_ids"].copy()
+        return out
+
+    dataset = dataset.map(tokenize, remove_columns=dataset.column_names)
+
+    val_dataset = None
+    if args.val_data and args.val_data.exists():
+        val_dataset = load_dataset("json", data_files=str(args.val_data), split="train")
+        val_dataset = val_dataset.map(tokenize, remove_columns=val_dataset.column_names)
+
+    do_eval = val_dataset is not None
+    targs = TrainingArguments(
+        output_dir=str(args.output_dir),
+        num_train_epochs=args.epochs,
+        per_device_train_batch_size=args.batch_size,
+        gradient_accumulation_steps=args.grad_accum,
+        learning_rate=args.lr,
+        fp16=True,
+        logging_steps=10,
+        save_strategy="epoch",
+        eval_strategy="epoch" if do_eval else "no",
+        optim="paged_adamw_8bit",
+    )
+
+    trainer = Trainer(
+        model=model,
+        args=targs,
+        train_dataset=dataset,
+        eval_dataset=val_dataset,
+    )
+    trainer.train()
+    model.save_pretrained(str(args.output_dir))
+    print(f"saved adapter to {args.output_dir}")
+    return 0
 
 
-dataset = dataset.map(tokenize, remove_columns=dataset.column_names)
-
-# Training
-args = TrainingArguments(
-    output_dir="../models/My-lm-lora",
-    num_train_epochs=3,
-    per_device_train_batch_size=1,  # keep at 1 for 6 GB
-    gradient_accumulation_steps=8,  # effective batch = 8
-    learning_rate=2e-4,
-    fp16=True,
-    logging_steps=10,
-    save_strategy="epoch",
-    optim="paged_adamw_8bit",
-)
-
-trainer = Trainer(model=model, args=args, train_dataset=dataset)
-trainer.train()
-model.save_pretrained("../models/My-lm-lora")
+if __name__ == "__main__":
+    raise SystemExit(main())

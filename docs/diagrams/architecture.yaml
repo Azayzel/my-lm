@@ -1,0 +1,111 @@
+version: 1
+document:
+  title: "My-LM System Architecture"
+
+layout:
+  engine: "layered"
+  direction: "LR"
+  node_size:
+    w: 2.4
+    h: 1.0
+  spacing:
+    x: 1.2
+    y: 0.6
+  page_margin: 0.5
+
+pages:
+  - name: "Architecture"
+    nodes:
+      - id: "user"
+        text: "User"
+
+      - id: "renderer"
+        text: "Renderer (TS + webpack)"
+
+      - id: "preload"
+        text: "Preload (window.My)"
+
+      - id: "main"
+        text: "Electron Main (Node)"
+
+      - id: "llmBridge"
+        text: "llmBridge"
+      - id: "imageBridge"
+        text: "imageBridge"
+      - id: "trainBridge"
+        text: "trainBridge"
+      - id: "bookBridge"
+        text: "bookBridge"
+
+      - id: "llmPy"
+        text: "scripts/llm_bridge.py"
+      - id: "imagePy"
+        text: "scripts/image_bridge.py"
+      - id: "trainPy"
+        text: "scripts/train_bridge.py"
+      - id: "bookPy"
+        text: "scripts/book_bridge.py"
+
+      - id: "mylm"
+        text: "src/mylm (Python lib)"
+
+      - id: "torch"
+        text: "PyTorch + CUDA (GPU)"
+      - id: "hf"
+        text: "Hugging Face Hub"
+      - id: "atlas"
+        text: "MongoDB Atlas (vector)"
+
+    edges:
+      - from: "user"
+        to: "renderer"
+        label: "interacts"
+
+      - from: "renderer"
+        to: "preload"
+        label: "window.My"
+
+      - from: "preload"
+        to: "main"
+        label: "IPC"
+
+      - from: "main"
+        to: "llmBridge"
+      - from: "main"
+        to: "imageBridge"
+      - from: "main"
+        to: "trainBridge"
+      - from: "main"
+        to: "bookBridge"
+
+      - from: "llmBridge"
+        to: "llmPy"
+        label: "spawn / NDJSON"
+      - from: "imageBridge"
+        to: "imagePy"
+        label: "spawn / NDJSON"
+      - from: "trainBridge"
+        to: "trainPy"
+        label: "spawn / NDJSON"
+      - from: "bookBridge"
+        to: "bookPy"
+        label: "spawn / NDJSON"
+
+      - from: "llmPy"
+        to: "mylm"
+      - from: "imagePy"
+        to: "mylm"
+      - from: "trainPy"
+        to: "mylm"
+      - from: "bookPy"
+        to: "mylm"
+
+      - from: "mylm"
+        to: "torch"
+        label: "torch.cuda"
+      - from: "mylm"
+        to: "hf"
+        label: "downloads"
+      - from: "bookPy"
+        to: "atlas"
+        label: "$vectorSearch"

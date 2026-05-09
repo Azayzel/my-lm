@@ -15,6 +15,17 @@ interface MyAPI {
     status(): Promise<{ running: boolean; ready: boolean }>;
     onEvent(cb: (msg: BridgeMsg) => void): () => void;
   };
+  vision: {
+    describeImage(
+      imagePath: string,
+      hint?: string,
+    ): Promise<{
+      ok: boolean;
+      caption?: string;
+      model?: string;
+      error?: string;
+    }>;
+  };
   image: {
     start(
       modelPath?: string,
@@ -36,6 +47,15 @@ interface MyAPI {
     stop(): Promise<{ ok: boolean }>;
     status(): Promise<{ running: boolean; ready: boolean }>;
     onEvent(cb: (msg: BridgeMsg) => void): () => void;
+  };
+  ingest: {
+    status(): Promise<{
+      ok: boolean;
+      data?: IngestHeartbeat;
+      ageSeconds?: number;
+      mtime?: number;
+      error?: string;
+    }>;
   };
   config: {
     get(): Promise<AppConfig>;
@@ -63,6 +83,15 @@ interface MyAPI {
   };
   media: {
     list(subdir?: string): Promise<MediaListing>;
+    getThumbnail(
+      filePath: string,
+      maxSize?: number,
+    ): Promise<{
+      ok: boolean;
+      path?: string;
+      cached?: boolean;
+      error?: string;
+    }>;
     createFolder(
       name: string,
     ): Promise<{ ok: boolean; path?: string; error?: string }>;
@@ -96,6 +125,22 @@ interface MyAPI {
     ): Promise<{ ok: boolean; error?: string }>;
     onEvent(cb: (msg: BridgeMsg) => void): () => void;
   };
+  bench: {
+    start(config: BenchmarkConfig): Promise<{ ok: boolean; error?: string }>;
+    stop(): Promise<{ ok: boolean }>;
+    status(): Promise<{ running: boolean; resultsDir: string }>;
+    listResults(): Promise<{
+      ok: boolean;
+      dir: string;
+      files: BenchmarkResultFile[];
+      error?: string;
+    }>;
+    getResult(
+      filePath: string,
+    ): Promise<{ ok: boolean; data?: unknown; error?: string }>;
+    openResultsDir(): Promise<{ ok: boolean }>;
+    onEvent(cb: (msg: BridgeMsg) => void): () => void;
+  };
   dialog: {
     openDir(): Promise<string | null>;
     openFile(
@@ -105,6 +150,15 @@ interface MyAPI {
   system: {
     diagnostics(): Promise<SystemDiagnostics>;
     gpuInfo(): Promise<GpuInfoResponse>;
+    gpuPoll(): Promise<GpuPollResponse>;
+    gpuProcesses(): Promise<GpuProcessesResponse>;
+    gpuHealth(): Promise<GpuHealthResponse>;
+    clearThumbnailCache(): Promise<{
+      ok: boolean;
+      removedFiles?: number;
+      removedBytes?: number;
+      error?: string;
+    }>;
   };
   onPaths(cb: (paths: AppPaths) => void): void;
 }
@@ -132,6 +186,11 @@ interface GpuInfoResponse {
       total_memory_gb: number;
       major: number;
       minor: number;
+      multi_processor_count: number;
+      cuda_cores: number | null;
+      tensor_cores: number | null;
+      l2_cache_size_mb: number;
+      warp_size: number;
     }>;
     error?: string;
   } | null;
@@ -140,10 +199,55 @@ interface GpuInfoResponse {
     name: string;
     driverVersion: string;
     memoryMb: number;
+    memoryUsedMb: number;
+    memoryFreeMb: number;
     temperatureC: number;
     utilizationPercent: number;
+    powerDrawW: number | null;
+    powerLimitW: number | null;
+    gpuClockMhz: number | null;
+    memClockMhz: number | null;
+    pcieLinkGen: number | null;
+    pcieLinkWidth: number | null;
   }>;
   nvidiaError: string | null;
+}
+
+interface GpuPollResponse {
+  ok: boolean;
+  error?: string;
+  timestamp?: number;
+  gpus: Array<{
+    utilizationPercent: number | null;
+    temperatureC: number | null;
+    powerDrawW: number | null;
+    memoryUsedMb: number | null;
+    memoryTotalMb: number | null;
+    gpuClockMhz: number | null;
+  }>;
+}
+
+interface GpuProcessesResponse {
+  ok: boolean;
+  error?: string;
+  processes: Array<{
+    pid: string;
+    name: string;
+    memoryMb: number;
+  }>;
+}
+
+interface GpuHealthResponse {
+  ok: boolean;
+  error?: string;
+  gpus: Array<{
+    pstate: string;
+    fanSpeedPercent: number | null;
+    eccCorrected: number | null;
+    eccUncorrected: number | null;
+    retiredSingleBit: number | null;
+    retiredDoubleBit: number | null;
+  }>;
 }
 
 interface TrainConfig {
@@ -160,6 +264,44 @@ interface TrainConfig {
   max_seq_len: number;
   logging_steps: number;
   use_4bit: boolean;
+}
+
+interface BenchmarkConfig {
+  models: string;
+  tasks: string;
+  conditions: string;
+  trials: number;
+  output?: string;
+  dryRun: boolean;
+}
+
+interface BenchmarkResultFile {
+  name: string;
+  path: string;
+  size: number;
+  mtime: number;
+}
+
+interface IngestHeartbeat {
+  status: "running" | "idle" | "done" | "stopped" | string;
+  pass_num?: number;
+  pass_started_at?: string;
+  current_subject?: string;
+  subject_index?: number;
+  subject_total?: number;
+  totals?: {
+    inserted: number;
+    updated: number;
+    skipped: number;
+    errors: number;
+  };
+  last_pass_totals?: {
+    inserted: number;
+    updated: number;
+    skipped: number;
+    errors: number;
+  };
+  timestamp?: string;
 }
 
 interface BridgeMsg {
@@ -187,7 +329,7 @@ interface CatalogEntry {
   id: string;
   name: string;
   repoId: string;
-  category: "llm" | "image" | "upscaler" | "vae" | "face";
+  category: "llm" | "image" | "upscaler" | "vae" | "face" | "nsfw";
   minVramGb: number;
   sizeGb: number;
   description: string;
@@ -228,11 +370,13 @@ interface ModelInfo {
   path: string;
   type: string;
   exists: boolean;
+  sizeGb?: number;
 }
 
 interface AppPaths {
   outputs: string;
   llmModel: string;
+  loraModel: string;
   imageModel: string;
   python: string;
 }

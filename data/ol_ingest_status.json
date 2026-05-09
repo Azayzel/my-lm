@@ -1,0 +1,15 @@
+{
+  "status": "running",
+  "pass_num": 1,
+  "pass_started_at": "2026-05-09T21:15:54.304587+00:00",
+  "current_subject": "adventure_stories",
+  "subject_index": 2,
+  "subject_total": 83,
+  "totals": {
+    "inserted": 48,
+    "updated": 0,
+    "skipped": 15,
+    "errors": 0
+  },
+  "timestamp": "2026-05-09T21:18:29.372890+00:00"
+}

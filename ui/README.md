@@ -12,7 +12,7 @@ ui/
 │   ├── main/                   Main process (Node)
 │   │   ├── main.ts             Window, IPC handlers, process lifecycle
 │   │   ├── preload.ts          contextBridge API exposed as window.My
-│   │   ├── llmBridge.ts        Spawns llm_bridge.py, streams tokens
+│   │   ├── llmBridge.ts        Spawns llm_bridge.py / gguf_bridge.py, streams tokens
 │   │   ├── imageBridge.ts      Spawns image_bridge.py, streams progress + previews
 │   │   ├── trainBridge.ts      Spawns train_bridge.py, streams training metrics
 │   │   ├── modelManager.ts     Lists installed models, downloads HF repos
@@ -57,6 +57,10 @@ npm run package    # produce installer
 All renderer → main calls go through `window.My.*` (defined in `preload.ts`) which wraps `ipcRenderer.invoke`. Long-running operations (chat, image gen, training, downloads) use fire-and-forget `send()` + an `onEvent` subscription for streaming updates back to the renderer.
 
 Each Python bridge is a long-lived subprocess owned by the main process. Bridges read newline-delimited JSON from stdin and emit newline-delimited JSON events to stdout. Screen navigation never kills or restarts bridges — you can freely leave and return while anything is running.
+
+For Chat models, the main process auto-selects runtime by path:
+- Directory path: `llm_bridge.py` (Transformers / adapter-aware)
+- `.gguf` file path: `gguf_bridge.py` (llama-cpp-python)
 
 ## Prompt builder
 
