@@ -3851,13 +3851,55 @@ cfgSaveBtn.addEventListener("click", async () => {
   }, 3000);
 });
 
+// ── Data & Cache actions ────────────────────────────────────────────────────
+const cfgBooksCacheSize = $<HTMLElement>("#cfg-books-cache-size");
+const cfgClearBooksCache = $<HTMLButtonElement>("#cfg-clear-books-cache");
+const cfgResetSettings = $<HTMLButtonElement>("#cfg-reset-settings");
+
+function refreshCacheStats() {
+  const raw = localStorage.getItem(BOOKS_CACHE_KEY);
+  let entries: unknown[] = [];
+  try {
+    entries = JSON.parse(raw || "[]");
+  } catch {
+    entries = [];
+  }
+  const bytes = raw ? new TextEncoder().encode(raw).length : 0;
+  const kb = (bytes / 1024).toFixed(1);
+  cfgBooksCacheSize.textContent = entries.length
+    ? `${entries.length} entr${entries.length === 1 ? "y" : "ies"} · ${kb} KB`
+    : "Empty";
+}
+
+cfgClearBooksCache.addEventListener("click", () => {
+  localStorage.removeItem(BOOKS_CACHE_KEY);
+  refreshCacheStats();
+  showToast("Book recommendations cache cleared", "success");
+});
+
+cfgResetSettings.addEventListener("click", async () => {
+  await window.My.config.set({
+    mongoUri: "",
+    mongoDb: "",
+    embedModel: "",
+    vectorIndex: "",
+    goodreadsUser: "",
+  });
+  await loadSettings();
+  showToast("App settings reset", "success");
+});
+
 // Load settings on first visit to the screen
 document
   .querySelector<HTMLElement>('.nav-btn[data-screen="settings"]')
-  ?.addEventListener("click", () => loadSettings());
+  ?.addEventListener("click", () => {
+    loadSettings();
+    refreshCacheStats();
+  });
 
 // Also load on startup to check if mongo is configured
 loadSettings();
+refreshCacheStats();
 
 // ─────────────────────────────────────────────────────────────────────────────
 // FIRST-RUN ESSENTIALS MODAL

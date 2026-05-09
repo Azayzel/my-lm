@@ -4353,6 +4353,27 @@ face asymmetry, eyes asymmetry, deformed eyes, open mouth, cartoon, painting, bl
               />
             </div>
 
+            <div class="settings-card u-mt-4">
+              <h3>Data &amp; Cache</h3>
+              <p class="hint">Locally cached data stored in this browser session.</p>
+              <div style="display:flex;flex-direction:column;gap:10px">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+                  <div>
+                    <div style="font-size:13px;font-weight:600">Book recommendations cache</div>
+                    <div class="u-fs-xs" style="color:var(--text3)" id="cfg-books-cache-size">Loading…</div>
+                  </div>
+                  <button class="btn btn-ghost btn-sm" id="cfg-clear-books-cache">Clear</button>
+                </div>
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+                  <div>
+                    <div style="font-size:13px;font-weight:600">App settings (connection, defaults)</div>
+                    <div class="u-fs-xs" style="color:var(--text3)">Stored via electron-store on disk</div>
+                  </div>
+                  <button class="btn btn-ghost btn-sm" id="cfg-reset-settings">Reset</button>
+                </div>
+              </div>
+            </div>
+
             <div class="u-mt-4 u-flex u-gap-3">
               <button class="btn btn-primary" id="cfg-save-btn">
                 Save Settings

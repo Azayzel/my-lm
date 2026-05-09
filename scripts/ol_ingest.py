@@ -32,7 +32,9 @@ from __future__ import annotations
 import argparse
 import datetime
 import datetime as dt
+import json
 import logging
+import signal
 import sys
 import time
 from pathlib import Path
@@ -62,8 +64,50 @@ logging.basicConfig(
 )
 log = logging.getLogger("ol_ingest")
 
-# All subjects we'll crawl (values from GENRE_TO_OL_SUBJECT)
-DEFAULT_SUBJECTS: list[str] = sorted(set(GENRE_TO_OL_SUBJECT.values()))
+# Extra OL subject slugs the crawler should walk in addition to those mapped
+# from user-profile genres. Keep GENRE_TO_OL_SUBJECT untouched — it's the
+# user-genre→slug lookup used by the recommender; this set is ingest-only.
+INGEST_SUBJECTS: frozenset[str] = frozenset(
+    {
+        # Fantasy sub-genres
+        "epic_fantasy", "urban_fantasy", "dark_fantasy", "high_fantasy",
+        "sword_and_sorcery", "magical_realism", "fairy_tales",
+        # SF sub-genres
+        "space_opera", "cyberpunk", "dystopian", "post-apocalyptic",
+        "time_travel", "alternate_history", "hard_science_fiction",
+        "military_science_fiction", "steampunk",
+        # Mystery / thriller sub-genres
+        "cozy_mysteries", "detective_and_mystery_stories", "noir",
+        "psychological_thriller", "legal_thriller", "spy_thriller",
+        "true_crime",
+        # Horror / supernatural
+        "gothic_fiction", "supernatural", "vampires", "werewolves",
+        "witches", "ghost_stories", "occult_fiction",
+        # Romance sub-genres
+        "historical_romance", "regency_romance", "contemporary_romance",
+        "paranormal_romance",
+        # Adventure / action
+        "adventure_stories", "action_and_adventure_fiction", "western",
+        "war_stories",
+        # Age-band fiction
+        "young_adult_fiction", "juvenile_fiction", "childrens_stories",
+        "middle_grade",
+        # Themes / motifs
+        "magic", "dragons", "mythology", "folklore",
+        # Non-fiction
+        "history", "philosophy", "psychology", "science", "mathematics",
+        "economics", "business", "politics", "religion", "spirituality",
+        "cooking", "travel", "art", "music", "photography",
+        # Awards (high-quality back-catalogue seed)
+        "hugo_award_winners", "nebula_award_winners", "pulitzer_prize_winners",
+        "booker_prize_winners", "national_book_award_winners",
+    }
+)
+
+# All subjects we'll crawl: user-genre slugs + ingest-only superset
+DEFAULT_SUBJECTS: list[str] = sorted(
+    set(GENRE_TO_OL_SUBJECT.values()) | INGEST_SUBJECTS
+)
 
 # OL subjects API page size
 _PAGE_SIZE = 20
@@ -74,6 +118,81 @@ _RATE_S = 0.5
 # MongoDB collections
 _BOOKS_COLLECTION = "books"
 _STATE_COLLECTION = "ol_ingest_state"
+
+# ─── Process-wide control flags ──────────────────────────────────────────────
+
+# Set by SIGINT/SIGTERM handlers so long-running loops can exit cleanly between
+# books / pages / passes without leaving Mongo state half-written.
+_shutdown_requested: bool = False
+
+# Path of the heartbeat JSON file (set in main(); None disables the writer).
+_HEARTBEAT_PATH: Path | None = None
+
+# ─── Signals & heartbeat ─────────────────────────────────────────────────────
+
+
+def _install_signal_handlers() -> None:
+    """Install SIGINT/SIGTERM handlers that flip the global shutdown flag.
+
+    Long-running loops poll ``_shutdown_requested`` between iterations and
+    exit cleanly — this avoids killing the embedder mid-batch or leaving
+    Mongo state un-saved.
+    """
+    def _handler(signum: int, _frame: Any) -> None:
+        global _shutdown_requested
+        _shutdown_requested = True
+        log.warning("Received signal %d — shutdown requested, finishing current item.", signum)
+
+    for sig_name in ("SIGINT", "SIGTERM", "SIGBREAK"):
+        sig = getattr(signal, sig_name, None)
+        if sig is not None:
+            try:
+                signal.signal(sig, _handler)
+            except (ValueError, OSError):
+                # Some signals can't be set on Windows / in non-main threads.
+                pass
+
+
+def write_heartbeat(payload: dict[str, Any]) -> None:
+    """Write a JSON heartbeat with current ingest status. Best-effort."""
+    if _HEARTBEAT_PATH is None:
+        return
+    try:
+        _HEARTBEAT_PATH.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            **payload,
+            "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        }
+        tmp = _HEARTBEAT_PATH.with_suffix(_HEARTBEAT_PATH.suffix + ".tmp")
+        tmp.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        tmp.replace(_HEARTBEAT_PATH)
+    except Exception as exc:  # noqa: BLE001 — heartbeat is best-effort
+        log.warning("heartbeat write failed: %s", exc)
+
+
+def refresh_stale_states(db: Any, refresh_days: float) -> int:
+    """Reset ``completed=False`` on subjects whose state is older than the TTL.
+
+    Returns the number of subjects reset. The crawler will re-paginate them
+    from offset 0 on the next pass to pick up newly-added works on OL.
+    """
+    if refresh_days <= 0 or db is None:
+        return 0
+
+    cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=refresh_days)
+    cutoff_iso = cutoff.isoformat()
+
+    result = db[_STATE_COLLECTION].update_many(
+        {"completed": True, "last_updated": {"$lt": cutoff_iso}},
+        {"$set": {"completed": False, "offset": 0}},
+    )
+    if result.modified_count:
+        log.info(
+            "Refresh: reset %d subjects last updated before %s",
+            result.modified_count, cutoff_iso,
+        )
+    return result.modified_count
+
 
 # ─── Subject → genre/theme/mood classification ───────────────────────────────
 
@@ -295,7 +414,7 @@ def crawl_subject(
             break
 
         for work in works:
-            if processed_this_run >= per_subject:
+            if processed_this_run >= per_subject or _shutdown_requested:
                 break
 
             ol_key = work.get("key") or ""
@@ -373,7 +492,7 @@ def crawl_subject(
         if not dry_run and db is not None:
             save_state(db, state)
 
-        if state["completed"]:
+        if state["completed"] or _shutdown_requested:
             break
 
         # Brief pause to be kind to OL servers
@@ -391,13 +510,30 @@ def run_pass(
     embedder: Any,
     subjects: list[str],
     *,
+    pass_num: int = 1,
     per_subject: int = 200,
     dry_run: bool = False,
-) -> None:
+) -> dict[str, int]:
     """Run one full crawl pass over all subjects."""
     totals = {"inserted": 0, "updated": 0, "skipped": 0, "errors": 0}
+    pass_start = datetime.datetime.now(datetime.timezone.utc).isoformat()
+
     for i, subject in enumerate(subjects):
+        if _shutdown_requested:
+            log.warning("Shutdown requested — aborting pass after %d/%d subjects.", i, len(subjects))
+            break
+
         log.info("Subject %d/%d: %s", i + 1, len(subjects), subject)
+        write_heartbeat({
+            "status": "running",
+            "pass_num": pass_num,
+            "pass_started_at": pass_start,
+            "current_subject": subject,
+            "subject_index": i + 1,
+            "subject_total": len(subjects),
+            "totals": totals,
+        })
+
         stats = crawl_subject(db, embedder, subject, per_subject=per_subject, dry_run=dry_run)
         for k in totals:
             totals[k] += stats.get(k, 0)
@@ -406,6 +542,7 @@ def run_pass(
         "Pass complete — inserted=%d updated=%d skipped=%d errors=%d",
         totals["inserted"], totals["updated"], totals["skipped"], totals["errors"],
     )
+    return totals
 
 
 # ─── Entry point ─────────────────────────────────────────────────────────────
@@ -445,7 +582,32 @@ def main() -> None:
         default=24.0,
         help="Hours to sleep between daemon passes (default: 24)",
     )
+    parser.add_argument(
+        "--refresh-after-days",
+        type=float,
+        default=30.0,
+        help=(
+            "Before each daemon pass, reset 'completed' on subjects whose "
+            "state is older than this TTL so they're re-crawled for newly "
+            "added books on OL (default: 30; set 0 to disable)"
+        ),
+    )
+    parser.add_argument(
+        "--heartbeat-path",
+        default=str(Path(__file__).resolve().parent.parent / "data" / "ol_ingest_status.json"),
+        help="Path to JSON heartbeat file (default: <repo>/data/ol_ingest_status.json)",
+    )
+    parser.add_argument(
+        "--no-heartbeat",
+        action="store_true",
+        help="Disable heartbeat file writing",
+    )
     args = parser.parse_args()
+
+    # ── Wire signal handlers + heartbeat path ────────────────────────────────
+    _install_signal_handlers()
+    global _HEARTBEAT_PATH
+    _HEARTBEAT_PATH = None if args.no_heartbeat else Path(args.heartbeat_path)
 
     # ── Parse subject list ────────────────────────────────────────────────────
     if args.subjects:
@@ -477,18 +639,45 @@ def main() -> None:
 
     # ── Run ───────────────────────────────────────────────────────────────────
     pass_num = 0
-    while True:
+    while not _shutdown_requested:
         pass_num += 1
-        log.info("=== Pass %d started at %s ===", pass_num, datetime.datetime.now().strftime("%Y-%m-%d %H:%M"))
-        run_pass(db, embedder, subjects, per_subject=args.per_subject, dry_run=args.dry_run)
 
-        if not args.daemon:
+        # Refresh stale subjects so completed ones get re-crawled for new books
+        if not args.dry_run and args.refresh_after_days > 0:
+            refresh_stale_states(db, args.refresh_after_days)
+
+        log.info("=== Pass %d started at %s ===", pass_num, datetime.datetime.now().strftime("%Y-%m-%d %H:%M"))
+        totals = run_pass(
+            db,
+            embedder,
+            subjects,
+            pass_num=pass_num,
+            per_subject=args.per_subject,
+            dry_run=args.dry_run,
+        )
+        write_heartbeat({
+            "status": "idle" if args.daemon else "done",
+            "pass_num": pass_num,
+            "last_pass_totals": totals,
+        })
+
+        if not args.daemon or _shutdown_requested:
             break
 
         sleep_secs = args.sleep_hours * 3600
         wake_at = datetime.datetime.now() + datetime.timedelta(seconds=sleep_secs)
         log.info("Daemon sleeping %.1fh — next run at %s", args.sleep_hours, wake_at.strftime("%Y-%m-%d %H:%M"))
-        time.sleep(sleep_secs)
+
+        # Short polling sleep so shutdown signals are picked up quickly.
+        slept = 0.0
+        poll = 5.0
+        while slept < sleep_secs and not _shutdown_requested:
+            time.sleep(min(poll, sleep_secs - slept))
+            slept += poll
+
+    if _shutdown_requested:
+        log.info("Shutdown complete.")
+        write_heartbeat({"status": "stopped", "pass_num": pass_num})
 
 
 if __name__ == "__main__":

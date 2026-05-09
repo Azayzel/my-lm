@@ -228,7 +228,7 @@ def run_query(request: dict) -> None:
         from mylm.rag import fetch_read_shelf
 
         emit({"type": "status", "message": f"Fetching Goodreads profile: {goodreads_user}..."})
-        gr_books = fetch_read_shelf(goodreads_user, max_books=80)
+        gr_books = fetch_read_shelf(goodreads_user, max_books=2000)
         if not gr_books:
             emit({"type": "log", "text": f"No public books found for Goodreads user '{goodreads_user}' (profile may be private or username wrong)"})
         else:
